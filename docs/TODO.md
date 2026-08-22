@@ -9,8 +9,9 @@ project: spintax-dotnet
 
 ## Now
 
-- [ ] First push to `github.com/investblog/spintax-dotnet`; the `NUGET_API_KEY` secret in the
-      `nuget` environment; tag `v0.1.0` (RELEASING.md).
+- [x] First push to `github.com/investblog/spintax-dotnet` (2026-08-23, CI green on the first run).
+- [ ] Trusted Publishing policy on nuget.org (owner `investblog`, repo `spintax-dotnet`, workflow
+      `release.yml`, environment `nuget`) + the `NUGET_USER` secret; then tag `v0.1.0` (RELEASING.md).
 - [ ] After the first package: reserve the `Spintax.*` ID prefix on NuGet.
 
 ## Debts

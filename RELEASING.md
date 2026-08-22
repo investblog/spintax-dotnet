@@ -21,8 +21,14 @@ decided; the workflow publishes it verbatim.
 3. `src/Spintax.Core/Spintax.Core.csproj` `<Version>` is bumped: the workflow **fails the release if
    the csproj version does not match the tag** — that gate is why the bump commit must land before
    (or be) the tagged commit.
-4. The repository secret `NUGET_API_KEY` exists in the `nuget` environment (a NuGet API key scoped
-   to push `Spintax.Core`).
+4. **Trusted Publishing** is set up — no long-lived key anywhere:
+   - on nuget.org: *username → Trusted Publishing → Add policy* with Repository Owner
+     `investblog`, Repository `spintax-dotnet`, Workflow File `release.yml`, Environment `nuget`
+     (the policy applies to every package of its owner; for a public repository it is active
+     at once, and the first successful publish pins it to the repository's ID);
+   - on GitHub: the secret `NUGET_USER` in the `nuget` environment = the nuget.org **profile
+     name** (not an e-mail). The workflow's `NuGet/login@v1` step exchanges the job's OIDC token
+     for a one-hour API key right before `dotnet nuget push`.
 
 ## Versioning
 
@@ -56,7 +62,7 @@ git push origin vX.Y.Z
   the `net472` host really runs.
 - **csproj Version == tag** — a mismatched bump stops before upload.
 - `dotnet pack` with the symbol package (`.snupkg`) and the README inside the package.
-- `--skip-duplicate` on push: re-running a tag that already published is a no-op, not an error.
+- Keyless push through Trusted Publishing (`id-token: write`, `NuGet/login@v1`); `--skip-duplicate` on push: re-running a tag that already published is a no-op, not an error.
 - The GitHub release is created only after NuGet accepted the upload, so a release never announces
   an artifact that wasn't published.
 
