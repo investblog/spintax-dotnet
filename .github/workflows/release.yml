@@ -51,9 +51,13 @@ jobs:
         run: dotnet run --project tests/Spintax.Corpus -c Release -f net472 --no-build -- --baseline tests/known-failures.txt
 
       # The package version must be the tag: a mismatched bump stops before upload.
-      - name: Version == tag
+      # Both checks run BEFORE pack and push: a NuGet version is irreversible, so a lightweight
+      # tag or a mismatched bump must stop here, not after the upload.
+      - name: Annotated tag, version == tag
         shell: pwsh
         run: |
+          git fetch --force --tags origin
+          if ((git cat-file -t "${{ github.ref_name }}") -ne "tag") { throw "${{ github.ref_name }} is a lightweight tag; releases need an annotated one (RELEASING.md)" }
           $tag = "${{ github.ref_name }}".TrimStart("v")
           $ver = ([xml](Get-Content src/Spintax.Core/Spintax.Core.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
           if ($ver -ne $tag) { throw "csproj Version $ver does not match tag $tag" }
@@ -74,8 +78,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          git fetch --force --tags origin
-          if ((git cat-file -t $tag) -ne "tag") { throw "$tag is a lightweight tag; releases need an annotated one (RELEASING.md)" }
           $subject = (git for-each-ref "refs/tags/$tag" --format='%(contents:subject)') -join ''
           git for-each-ref "refs/tags/$tag" --format='%(contents:body)' | Out-File -FilePath notes.md -Encoding utf8
           if ((Get-Content notes.md -Raw).Trim().Length -eq 0) { "Spintax.Core $tag" | Out-File -FilePath notes.md -Encoding utf8 }

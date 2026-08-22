@@ -45,7 +45,7 @@ Constraints the shipped dll must keep (the package contract, `AGENTS.md`) — ch
   properties instead.
 - The zero-NuGet rule is about `src/Spintax.Core` only; test hosts may reference packages.
 
-Port-specific traps (measured, see `docs/TODO.md` "Правила порта"):
+Port-specific traps (measured; the full list is in `AGENTS.md`, "JS → .NET port rules"):
 
 - never `\w`, `\d`, `\s`, `\b` in a regex and never `String.Trim()` on engine text — JS and .NET
   disagree on Cyrillic (`\w`), on U+FEFF / U+0085 (`\s`, `trim`). Spell the class or the set.
