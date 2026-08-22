@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "spintax": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@spintax/mcp"]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+# ./.agents/generated/.agents.lock.yaml — written by bootstrap, do not edit
+source: C:/Users/Admin/.agents
+commit: 059b4c724ce3dea3af987f1b1984c89f30743f2e
+generated_at: 2026-08-22T00:00:00Z
+domains:  [coding]
+rules:    [rule-format, env-setup, project-docs, proof-loop, secrets, git-discipline, quality-py, quality-js, quality-bash, quality-perl, quality-cpp, quality-csharp, code-search, code-review, user-docs]
+skills:   []
+agents:   [docs, searcher, reviewer]
+mcp:
+  chain:         [playwright]   # scope: global machine infra — USED, not rendered here
+  project_bound: [spintax]      # @spintax/mcp — the reference engine as the second oracle (see REGISTRY)
+templates:[gitignore, plan]

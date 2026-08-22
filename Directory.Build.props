@@ -1,0 +1,19 @@
+<Project>
+  <!-- Shared by every project in the tree. The library (netstandard2.0;net472) lives in
+       src/Spintax.Core; the test hosts run on net8.0 and net472. -->
+  <PropertyGroup>
+    <!-- netstandard2.0 defaults to C# 7.3. We compile with the latest compiler: language features
+         lower to IL the old runtime runs (ZennoPoster consumes the dll, not the source), EXCEPT
+         the few that need runtime types netstandard2.0 lacks. Those are banned by the
+         quality-csharp rule: no `record`, no `init` (IsExternalInit), no default interface
+         members. Nullable annotations are fine (attributes-free use only). -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <!-- No <CodePage>. Sources are UTF-8 without BOM (.editorconfig), which Roslyn detects by
+         itself; setting CodePage=65001 made `dotnet format` load every file as BOM-UTF-8 and
+         flag all of them with a false CHARSET error (measured 2026-08-21, REGISTRY). -->
+  </PropertyGroup>
+</Project>

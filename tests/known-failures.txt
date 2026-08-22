@@ -1,0 +1,17 @@
+# Known-failing corpus cases — the baseline the corpus gate compares against.
+#
+# EMPTY. The whole golden corpus passes: PASS=258 FAIL=0 SKIP=0 — 254 deterministic cases
+# exact (the 10 tagged engines:["ts","py"] included) and the 4 kind:rng cases on their
+# invariants.
+#
+# It was not always empty. At M1 step 0 (2026-08-21) it listed all 258 against the empty
+# core, and it shrank step by step as the port landed — the history of this file is the
+# history of M1.
+#
+# The runner (tests/Spintax.Corpus --baseline <this file>) exits 0 only when the set of failing
+# case ids equals this list, so:
+#   * ANY failure is now a regression and blocks the push — fix it, do not add it here;
+#   * if a case ever legitimately becomes expected-to-fail, add it here WITH a reason: an empty
+#     baseline is a claim, and it should not be weakened silently.
+#
+# Format: <fixture file><space><space><case id>. Sorted. Comments and blank lines ignored.

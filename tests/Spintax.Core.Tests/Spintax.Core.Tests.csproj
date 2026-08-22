@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests: what the corpus schema cannot express (1-based positions, plural buckets for
+       locales the corpus lacks, the assembly contract). Test host — the zero-NuGet rule does
+       not apply here. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net472</TargetFrameworks>
+    <RootNamespace>Spintax.Core.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Spintax.Core/Spintax.Core.csproj" />
+  </ItemGroup>
+
+</Project>

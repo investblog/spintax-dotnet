@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # Windows on purpose: the net472 test host and the net472 corpus run need the .NET Framework
+    # runtime, and net472 is the runtime class the engine's first consumer (ZennoPoster) loads it
+    # into. The BCL's Unicode tables are the one thing that can differ from .NET 8.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The golden corpus is the cross-engine contract, shared with @spintax/core (TypeScript),
+      # spintax/core (PHP), spintax-core (Python) and spintax-win (Object Pascal). Checked out
+      # rather than vendored: a copy would drift, and a drifting contract is not a contract.
+      - name: Check out the golden corpus
+        uses: actions/checkout@v4
+        with:
+          repository: investblog/spintax-js
+          path: .corpus
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Warnings are errors (Directory.Build.props): a clean build is the lint.
+      - name: Build
+        run: dotnet build Spintax.sln -c Release -nologo -v q
+
+      - name: Format
+        run: dotnet format Spintax.sln --verify-no-changes -v q
+
+      - name: Unit tests (net8.0 and net472)
+        run: dotnet test Spintax.sln -c Release --no-build -nologo -v q
+
+      # The acceptance suite. The runner exits 2 when no corpus resolves — never a green zero.
+      - name: Golden corpus, net8.0
+        env:
+          SPINTAX_FIXTURES: ${{ github.workspace }}\.corpus\packages\conformance\fixtures
+        run: dotnet run --project tests/Spintax.Corpus -c Release -f net8.0 --no-build -- --baseline tests/known-failures.txt
+
+      - name: Golden corpus, net472
+        env:
+          SPINTAX_FIXTURES: ${{ github.workspace }}\.corpus\packages\conformance\fixtures
+        run: dotnet run --project tests/Spintax.Corpus -c Release -f net472 --no-build -- --baseline tests/known-failures.txt
+
+      # The distribution, built on every push so a packaging regression is a red run, not a
+      # surprise at release time.
+      - name: Pack
+        run: dotnet pack src/Spintax.Core -c Release --no-build -o artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/*.nupkg

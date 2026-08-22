@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The engine. Born as the ZennoPoster port in spintax-zenno, and its constraints are kept as
+       the contract of this package: ZERO package references (BCL only), AnyCPU, no mutable
+       static state, no Task<T> in the public surface, two targets from one source. The assembly
+       contract tests check these by reading the built dll, not by trusting this file. -->
+  <PropertyGroup>
+    <!-- net472 is what ships to ZennoPoster: its cube compiler (7.9.1.0) has no reference to
+         netstandard.dll, so a netstandard2.0 dll fails with CS0012 the moment a cube touches
+         Dictionary<,> or object from our API. netstandard2.0 stays for every other host. -->
+    <TargetFrameworks>netstandard2.0;net472</TargetFrameworks>
+    <RootNamespace>Spintax.Core</RootNamespace>
+    <AssemblyName>Spintax.Core</AssemblyName>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- The package. Same shape as the siblings (@spintax/core, spintax/core, spintax-core): MIT,
+       301st, spintax.net as the home. No SourceLink package — the .NET 8 SDK links sources on its
+       own, and the zero-PackageReference contract is tested. -->
+  <PropertyGroup>
+    <PackageId>Spintax.Core</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>301st</Authors>
+    <Company>301st</Company>
+    <Description>A Spintax engine for .NET: parse, render, validate, extract, analyze and neutralize spintax templates — enumerations, permutations, variables, conditionals, locale-aware plurals, #set / #def / #include, and a post-processing pass. Zero dependencies, netstandard2.0 and net472, held to the Spintax family's shared golden corpus.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://spintax.net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/investblog/spintax-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>spintax;text-spinning;content-spinning;spinner;template-variations;nested-spintax</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!-- The RNG seam (`Engine.RenderWith`) is internal by contract: the public render() takes a
+       seed, never an injected RNG. The corpus runner needs the seam to pin deterministic picks. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Spintax.Corpus" />
+    <InternalsVisibleTo Include="Spintax.Core.Tests" />
+    <!-- The ZennoPoster facade (spintax-zenno) parses a template once per RenderMany / Lint call
+         and renders the same tree many times — a perf handle kept off the public surface. -->
+    <InternalsVisibleTo Include="Spintax.Zenno" />
+  </ItemGroup>
+
+</Project>

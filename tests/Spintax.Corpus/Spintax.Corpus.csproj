@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The golden-corpus runner: the acceptance suite of the port, a console app so that its
+       summary reads the same in a terminal, a git hook and CI. Exit 0 only with FAIL=0 over a
+       present, full-sized corpus; 1 on any failure; 2 when no corpus is found (never a green
+       zero). Test host: the zero-NuGet rule is about the shipped dll, not about this.
+
+       Two hosts on purpose. net8.0 is the everyday runner; net472 is the runtime class
+       ZennoPoster loads the dll into, and the one place where the BCL's Unicode tables (simple
+       case mappings, categories) can differ from .NET 8 — so the corpus runs under both
+       (plan M2 step 6, docs/TODO.md). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net472</TargetFrameworks>
+    <RootNamespace>Spintax.Corpus</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Spintax.Core/Spintax.Core.csproj" />
+  </ItemGroup>
+
+  <!-- System.Text.Json is in the box on net8.0 and a package on net472 — a test-host package,
+       not a shipped-dll one. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+</Project>

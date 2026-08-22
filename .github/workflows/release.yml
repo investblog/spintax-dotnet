@@ -1,0 +1,73 @@
+name: Release
+
+# Tag-driven, and deliberately not automatic on push to main: a release is a decision, not a
+# side effect of merging. Tag `v0.1.0` and this re-verifies, packs, pushes to NuGet and
+# announces. The tag annotation IS the release note (see RELEASING.md).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  # A tag can be placed on any commit, including one CI never saw green: the gate re-runs here
+  # so the artifact that reaches NuGet is one that passed, not one that probably did.
+  verify-and-publish:
+    runs-on: windows-latest
+    environment: nuget
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the golden corpus
+        uses: actions/checkout@v4
+        with:
+          repository: investblog/spintax-js
+          path: .corpus
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build Spintax.sln -c Release -nologo -v q
+
+      - name: Format
+        run: dotnet format Spintax.sln --verify-no-changes -v q
+
+      - name: Unit tests
+        run: dotnet test Spintax.sln -c Release --no-build -nologo -v q
+
+      - name: Golden corpus, net8.0
+        env:
+          SPINTAX_FIXTURES: ${{ github.workspace }}\.corpus\packages\conformance\fixtures
+        run: dotnet run --project tests/Spintax.Corpus -c Release -f net8.0 --no-build -- --baseline tests/known-failures.txt
+
+      - name: Golden corpus, net472
+        env:
+          SPINTAX_FIXTURES: ${{ github.workspace }}\.corpus\packages\conformance\fixtures
+        run: dotnet run --project tests/Spintax.Corpus -c Release -f net472 --no-build -- --baseline tests/known-failures.txt
+
+      # The package version must be the tag: a mismatched bump stops before upload.
+      - name: Version == tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $ver = ([xml](Get-Content src/Spintax.Core/Spintax.Core.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if ($ver -ne $tag) { throw "csproj Version $ver does not match tag $tag" }
+
+      - name: Pack
+        run: dotnet pack src/Spintax.Core -c Release --no-build -o artifacts
+
+      - name: Push to NuGet
+        run: dotnet nuget push artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      # Announced only after NuGet accepted the upload: a release never names an artifact that
+      # was not published. The annotated tag's message is the release body.
+      - name: GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $body = git for-each-ref "refs/tags/${{ github.ref_name }}" --format='%(contents)'
+          gh release create "${{ github.ref_name }}" artifacts/*.nupkg --title "Spintax.Core ${{ github.ref_name }}" --notes "$body"
