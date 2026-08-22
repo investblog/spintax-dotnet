@@ -26,8 +26,9 @@ decided; the workflow publishes it verbatim.
      `investblog`, Repository `spintax-dotnet`, Workflow File `release.yml`, Environment `nuget`
      (the policy applies to every package of its owner; for a public repository it is active
      at once, and the first successful publish pins it to the repository's ID);
-   - on GitHub: the secret `NUGET_USER` in the `nuget` environment = the nuget.org **profile
-     name** (not an e-mail). The workflow's `NuGet/login@v1` step exchanges the job's OIDC token
+   - on GitHub: the environment **variable** `NUGET_USER` in the `nuget` environment = the
+     nuget.org **profile name** (not an e-mail; a variable, not a secret — a secret would mask the
+     word in every log line). The workflow's `NuGet/login@v1` step exchanges the job's OIDC token
      for a one-hour API key right before `dotnet nuget push`.
 
 ## Versioning
