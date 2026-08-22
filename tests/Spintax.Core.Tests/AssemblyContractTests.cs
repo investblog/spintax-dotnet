@@ -9,9 +9,9 @@ using Xunit;
 namespace Spintax.Core.Tests
 {
     /// <summary>
-    /// The brief's §3 table, read off the built assemblies rather than off the csproj: a dll that
-    /// breaks one of these does not load in ZennoPoster, or falls over under load. Both shipped
-    /// dlls — the engine and the facade — are held to it. Checked by manifest, not by eye.
+    /// The package contract (AGENTS.md), read off the built assembly rather than off the csproj:
+    /// a dll that breaks one of these does not load in a .NET Framework host that compiles
+    /// snippets against it, or falls over under load. Checked by manifest, not by eye.
     /// </summary>
     public class AssemblyContractTests
     {
@@ -36,15 +36,13 @@ namespace Spintax.Core.Tests
         [MemberData(nameof(Shipped))]
         public void References_nothing_but_netstandard_and_our_own_engine(Assembly asm, string name)
         {
-            // Zero NuGet packages means zero referenced assemblies beyond the platform — and, for
-            // the facade, the engine it is a facade of.
+            // Zero NuGet packages means zero referenced assemblies beyond the platform.
             var refs = asm.GetReferencedAssemblies().Select(a => a.Name ?? "").OrderBy(n => n, StringComparer.Ordinal).ToList();
             // The platform: netstandard for the netstandard2.0 build; the Framework's own
             // assemblies for net472 (BigInteger lives in System.Numerics there).
             var platform = new[] { "netstandard", "mscorlib", "System", "System.Core", "System.Numerics" };
-            var foreign = refs.Where(r => !platform.Contains(r, StringComparer.Ordinal) && !(name == "Spintax.Zenno" && r == "Spintax.Core")).ToList();
+            var foreign = refs.Where(r => !platform.Contains(r, StringComparer.Ordinal)).ToList();
             Assert.True(foreign.Count == 0, $"{name} references: {string.Join(", ", refs)}");
-            if (name == "Spintax.Zenno") Assert.Contains("Spintax.Core", refs);
         }
 
         [Theory]

@@ -8,8 +8,9 @@ namespace Spintax.Corpus
 {
     /// <summary>
     /// Usage: <c>Spintax.Corpus [fixtures-dir] [--baseline known-failures.txt]</c>.
-    /// The fixtures dir falls back to <c>SPINTAX_FIXTURES</c>, then to the sibling
-    /// <c>spintax-js</c> checkout. Prints one line per failure, a per-op table, and a final
+    /// The fixtures dir comes from the argument, else <c>SPINTAX_FIXTURES</c>, else the sibling
+    /// <c>spintax-js</c> checkout — and a given path that does not exist is an error, not a
+    /// fallthrough (see <see cref="CorpusLocator.Find"/>). Prints one line per failure, a per-op table, and a final
     /// <c>PASS= FAIL= SKIP=</c> line.
     /// </summary>
     /// <remarks>

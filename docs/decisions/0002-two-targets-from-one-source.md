@@ -15,11 +15,11 @@ The engine was born as a `netstandard2.0` library for ZennoPoster. On the live p
 loaded, `Version` answered — and the first cube that touched `Dictionary<,>` from its API failed to
 compile: `CS0012: The type 'Object' is defined in an assembly that is not referenced. You must add
 a reference to assembly 'netstandard, Version=2.0.0.0'`. The cube compiler references `mscorlib`,
-not `netstandard.dll`; asking every user to add the facade by hand is not a product.
+not `netstandard.dll`; asking every user to add a `netstandard` reference by hand is not a product.
 
 ## Decision
 
-Both libraries multi-target `netstandard2.0;net472` from the same source. The `net472` build
+The library multi-targets `netstandard2.0;net472` from the same source. The `net472` build
 references `mscorlib`, `System`, `System.Core` and `System.Numerics` directly and is what ships
 to .NET Framework hosts; `netstandard2.0` serves everything else. The assembly contract tests
 accept either target, and the unit tests and the corpus run on both hosts, so the build that ships

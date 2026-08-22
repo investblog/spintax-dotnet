@@ -25,11 +25,15 @@ namespace Spintax.Corpus
 
         public static string HowTo =>
             $"Point {EnvVar} at a checkout of the corpus, e.g.\n" +
-            $"  {EnvVar}=W:\\projects\\spintax-js\\packages\\conformance\\fixtures\n" +
+            $"  {EnvVar}=<checkout>/packages/conformance/fixtures\n" +
             "or clone it next to this repository:\n" +
             "  git clone https://github.com/investblog/spintax-js ../spintax-js";
 
-        /// <summary>The fixtures directory, or <c>null</c> when none resolves.</summary>
+        /// <summary>
+        /// The fixtures directory, or <c>null</c> when none resolves. Precedence is fail-fast: an
+        /// explicit path or a set <c>SPINTAX_FIXTURES</c> that does not exist is an error, not a
+        /// reason to try the sibling — a stale variable must not quietly run another corpus.
+        /// </summary>
         public static string? Find(string? explicitPath)
         {
             if (!string.IsNullOrEmpty(explicitPath))

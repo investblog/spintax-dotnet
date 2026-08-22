@@ -9,9 +9,9 @@ namespace Spintax.Core
     /// construction: no mutable statics, every call owns its state.
     /// </summary>
     /// <remarks>
-    /// Step 0 of M1: the surface exists, nothing behind it does. Every member throws
-    /// <see cref="NotImplementedException"/> so the corpus runner reports every case FAILING —
-    /// that is the first check of the runner itself.
+    /// Flat signatures on purpose — strings, dictionaries, small DTOs, no <c>Task&lt;T&gt;</c> —
+    /// so the engine drops into hosts that load a dll by name and compile snippets against it.
+    /// Rendering never throws on content: malformed markup degrades, as in the reference engine.
     /// </remarks>
     public static class Engine
     {

@@ -5,7 +5,7 @@ description: Quality gate for C# / .NET in this project (netstandard2.0 library 
 
 # quality-csharp
 
-Authored locally at M1 step 0 (no C# rule in the `~/.agents` baseline; precedent:
+Authored locally in spintax-zenno when the C# toolchain was fixed (no C# rule in the `~/.agents` baseline; precedent:
 `quality-pascal` in `spintax-win`). The compiler is the linter, `dotnet format` is the
 formatter, the golden corpus is the acceptance suite.
 
@@ -30,13 +30,13 @@ Baseline tools — do not silently swap:
 
 - build / analyzers → `dotnet build` with `TreatWarningsAsErrors`
 - format → `dotnet format` (bundled with the SDK), settings in `.editorconfig`
-- tests → xunit in `tests/Spintax.Core.Tests` (net8.0)
-- acceptance → `tests/Spintax.Corpus` (console, net8.0), reads the corpus from a checkout
+- tests → xunit in `tests/Spintax.Core.Tests` (net8.0 and net472)
+- acceptance → `tests/Spintax.Corpus` (console, net8.0 and net472), reads the corpus from a checkout
 
-Constraints the shipped dll must keep (brief §3) — checked by
+Constraints the shipped dll must keep (the package contract, `AGENTS.md`) — checked by
 `tests/Spintax.Core.Tests/AssemblyContractTests.cs` against the built assembly, not by eye:
 
-- `netstandard2.0`, **zero** package references, AnyCPU, no `Task<T>` in the public surface,
+- `netstandard2.0;net472` from one source, **zero** package references, AnyCPU, no `Task<T>` in the public surface,
   no mutable static state (static `readonly` of an immutable type is fine — `Regex`, `string`,
   primitives).
 - `LangVersion` is `latest` for everyone; on `netstandard2.0` that means **no `record`, no

@@ -4,9 +4,9 @@
 # exact (the 10 tagged engines:["ts","py"] included) and the 4 kind:rng cases on their
 # invariants.
 #
-# It was not always empty. At M1 step 0 (2026-08-21) it listed all 258 against the empty
-# core, and it shrank step by step as the port landed — the history of this file is the
-# history of M1.
+# It was not always empty. While the engine was built (in spintax-zenno, 2026-08-21) it listed
+# all 258 cases against an empty core and shrank step by step as the port landed; it arrived
+# here empty.
 #
 # The runner (tests/Spintax.Corpus --baseline <this file>) exits 0 only when the set of failing
 # case ids equals this list, so:

@@ -3,3 +3,6 @@
 *.dll binary
 *.zpg binary
 *.xmlz binary
+# cmd.exe misparses LF-only batch files (labels, rem): keep CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf

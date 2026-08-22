@@ -4,7 +4,7 @@ namespace Spintax.Core.Tests
 {
     /// <summary>
     /// Plural buckets for the locales the corpus does NOT exercise (uk, be) alongside the ones it
-    /// does, plus the edge counts the brief names: 1 / 2–4 / 5+ / 11 / 21.
+    /// does, plus the edge counts worth pinning by hand: 1 / 2–4 / 5+ / 11 / 21.
     /// </summary>
     public class PluralsTests
     {

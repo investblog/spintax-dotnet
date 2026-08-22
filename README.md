@@ -36,7 +36,7 @@ Engine.Render("Hi %name%!", new RenderOptions
 // Check a template before you ship it: diagnostics carry a stable code and a 1-based position.
 foreach (var d in Engine.Validate("{a|b"))
     System.Console.WriteLine($"{d.Severity} {d.Line}:{d.Column} [{d.Code}] {d.Message}");
-// error 1:1 [bracket.unclosed] Unclosed '{'.
+// Error 1:1 [bracket.unclosed] Unclosed '{'.
 
 // How much a template can say — counted by walking the tree, not sampled.
 Engine.Combinations("{a|b} {c|d|e}");                                  // 6
@@ -47,9 +47,10 @@ non-programmer wrote cannot take a page down. Output is **tidied up** by default
 capitalisation, spacing around punctuation, URLs and abbreviations left intact; pass
 `PostProcess = false` to get the raw pick.
 
-Values in `Context` are data, not markup: a value holding `{a|b}` prints as `{a|b}` unless the
-host re-parses it on purpose. `Engine.Neutralize(value)` shields a value you are about to splice
-into a template as text.
+Values in `Context` are **re-parsed as templates** when they contain `{`, `[` or `%` — the
+reference engine does the same, so a host can pass spintax through a variable on purpose. Data
+from a table or a scraped page must go through `Engine.Neutralize(value)` first: it shields the
+structural characters so that `Aurix {Mini|Maxi}` prints as written instead of spinning.
 
 Syntax — enumerations `{a|b}`, permutations `[<minsize=2;sep=", ">a|b|c]`, variables `%name%`,
 conditionals `{?VAR?yes|no}`, plural agreement `{plural %n%: one|few|many}`, comments `/# … #/`,
@@ -74,9 +75,9 @@ class ValidateOptions { Locale; KnownIncludes; KnownVariables; }
 ```
 
 Flat signatures on purpose — strings, dictionaries, small DTOs, no `Task<T>` — so the engine
-drops into hosts that load a dll by name and compile snippets against it (ZennoPoster was the
-first; see [spintax-zenno](https://github.com/investblog/spintax-zenno) for the facade, the
-project templates and the live measurements). No mutable static state: dozens of threads can
+drops into hosts that load a dll by name and compile snippets against it — ZennoPoster was the
+first, and its facade, project templates and measurements ship with that plugin. No mutable
+static state: dozens of threads can
 render with the same seed and get the same bytes.
 
 `Combinations` counts **choice paths** — the number of distinct texts when no two options spell
@@ -128,6 +129,11 @@ special casing), the exact census, and the assembly contract — two targets, ze
 references, AnyCPU, no mutable static state, no `Task<T>` on the surface.
 
 ## Build and test
+
+The full gate needs **Windows with the .NET SDK 8** — the `net472` test host and the `net472`
+corpus run need the .NET Framework runtime, and the library deliberately adds no
+reference-assemblies package. On Linux or macOS build and test the `net8.0` host only
+(`dotnet test -f net8.0`, `dotnet run … -f net8.0`); the `netstandard2.0` library builds anywhere.
 
 ```sh
 git clone https://github.com/investblog/spintax-js ../spintax-js     # the corpus, once

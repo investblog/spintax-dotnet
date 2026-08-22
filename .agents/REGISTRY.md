@@ -15,8 +15,10 @@ the two repositories' gates identical — the same five commands, the same basel
 - **MCP `spintax` — project-bound, kept.** `@spintax/mcp` is the reference engine behind a tool
   surface: the second oracle when a corpus case and this engine disagree. Rendered as
   `cmd /c npx -y @spintax/mcp` (native Windows cannot spawn bare `npx`).
-- **The hook shell is the resolved Git-for-Windows bash** (`.claude/settings.json`), as in every
-  sibling: `C:\Windows\System32\bash.exe` is the WSL launcher on this machine.
+- **The hook shell is Git-for-Windows bash, resolved at run time** by `.agents/hooks/bash.cmd`
+  (next to `git.exe` on PATH) — a public repository cannot carry one machine's drive path, and
+  bare `bash` may be the WSL launcher. `.mcp.json` stays the Windows form (`cmd /c npx`) because
+  that is where this engine's first host lives; on POSIX replace it with `npx -y @spintax/mcp`.
 - **Not carried over:** the `content` and `research` domains and their chains (they served the
   article and the site page, which stay in `spintax-zenno`), `docs-frontmatter` is kept because
   `project-docs` is base.

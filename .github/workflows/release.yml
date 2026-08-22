@@ -18,6 +18,8 @@ jobs:
     environment: nuget
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the annotated tag object is the release note
 
       - name: Check out the golden corpus
         uses: actions/checkout@v4
@@ -64,10 +66,17 @@ jobs:
 
       # Announced only after NuGet accepted the upload: a release never names an artifact that
       # was not published. The annotated tag's message is the release body.
+      # The tag must be annotated (RELEASING.md): its subject is the title, its body the notes,
+      # passed through a file so that line breaks survive.
       - name: GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $body = git for-each-ref "refs/tags/${{ github.ref_name }}" --format='%(contents)'
-          gh release create "${{ github.ref_name }}" artifacts/*.nupkg --title "Spintax.Core ${{ github.ref_name }}" --notes "$body"
+          $tag = "${{ github.ref_name }}"
+          git fetch --force --tags origin
+          if ((git cat-file -t $tag) -ne "tag") { throw "$tag is a lightweight tag; releases need an annotated one (RELEASING.md)" }
+          $subject = (git for-each-ref "refs/tags/$tag" --format='%(contents:subject)') -join ''
+          git for-each-ref "refs/tags/$tag" --format='%(contents:body)' | Out-File -FilePath notes.md -Encoding utf8
+          if ((Get-Content notes.md -Raw).Trim().Length -eq 0) { "Spintax.Core $tag" | Out-File -FilePath notes.md -Encoding utf8 }
+          gh release create $tag (Get-ChildItem artifacts/*.nupkg) --title "$subject" --notes-file notes.md

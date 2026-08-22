@@ -7,8 +7,7 @@
 
        Two hosts on purpose. net8.0 is the everyday runner; net472 is the runtime class
        ZennoPoster loads the dll into, and the one place where the BCL's Unicode tables (simple
-       case mappings, categories) can differ from .NET 8 — so the corpus runs under both
-       (plan M2 step 6, docs/TODO.md). -->
+       case mappings, categories) can differ from .NET 8 — so the corpus runs under both. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net8.0;net472</TargetFrameworks>
