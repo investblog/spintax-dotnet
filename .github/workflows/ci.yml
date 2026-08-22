@@ -13,18 +13,18 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The golden corpus is the cross-engine contract, shared with @spintax/core (TypeScript),
       # spintax/core (PHP), spintax-core (Python) and spintax-win (Object Pascal). Checked out
       # rather than vendored: a copy would drift, and a drifting contract is not a contract.
       - name: Check out the golden corpus
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: investblog/spintax-js
           path: .corpus
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -54,7 +54,7 @@ jobs:
       - name: Pack
         run: dotnet pack src/Spintax.Core -c Release --no-build -o artifacts
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nupkg
           path: artifacts/*.nupkg

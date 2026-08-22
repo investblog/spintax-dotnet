@@ -17,17 +17,17 @@ jobs:
     runs-on: windows-latest
     environment: nuget
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # the annotated tag object is the release note
 
       - name: Check out the golden corpus
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: investblog/spintax-js
           path: .corpus
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
