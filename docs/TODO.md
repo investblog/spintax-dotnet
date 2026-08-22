@@ -10,8 +10,9 @@ project: spintax-dotnet
 ## Now
 
 - [x] First push to `github.com/investblog/spintax-dotnet` (2026-08-23, CI green on the first run).
-- [ ] Trusted Publishing policy on nuget.org (owner `investblog`, repo `spintax-dotnet`, workflow
-      `release.yml`, environment `nuget`) + the `NUGET_USER` secret; then tag `v0.1.0` (RELEASING.md).
+- [x] Trusted Publishing policy on nuget.org (owner `investblog`, repo `spintax-dotnet`, workflow
+      `release.yml`, environment `nuget`, packages `Spintax.*`) + the `NUGET_USER` variable;
+      `v0.1.0` published 2026-08-23 (run 32600562685: "Your package was pushed", release on GitHub).
 - [ ] After the first package: reserve the `Spintax.*` ID prefix on NuGet.
 
 ## Debts
