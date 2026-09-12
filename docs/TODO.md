@@ -21,10 +21,16 @@ project: spintax-dotnet
 - [x] Release `0.1.2` — the `Census` work behind the splice fix: the count follows the render's
       depth, freeze and allowance, saturates where it cannot bound an answer, and no longer
       advertises a guarantee it does not hold (2026-09-12, five rounds of the Codex gate).
-- [ ] **Ask `spintax-js` about the two family-level splice gaps** — a `%var%` in `minsize=` /
-      `maxsize=`, and a `{?…}` branch carrying a `|` with no reference beside it. Both match
-      `@spintax/core` 0.7.0 exactly and no corpus case pins either, so the answer belongs upstream
-      and then in the corpus; do not change .NET alone. Not filed yet (2026-09-12).
+- [x] Asked `spintax-js` about the two family-level splice gaps — a `%var%` in `minsize=` /
+      `maxsize=`, and a `{?…}` branch carrying a `|` with no reference beside it:
+      [spintax-js#80](https://github.com/investblog/spintax-js/issues/80), 2026-09-12. Both
+      reproduce in `@spintax/core` 0.7.0 itself (measured over 40 seeds), neither is pinned by the
+      corpus, and the expected PHP outputs still need confirming in docker. Do not change .NET
+      alone — wait for the answer and the fixtures.
+- [x] Reported the .NET mirror on the tracking issue
+      [spintax-js#78](https://github.com/investblog/spintax-js/issues/78#issuecomment-5647610154),
+      including the warning `py` and `win` need: the static analysis has to make the same change as
+      the renderer, and the corpus cannot see it.
 - [ ] **Check `spintax-zenno` against the splice.** Its `Lint` adds each raw variable VALUE to the
       ignore list so data is not flagged as writing; a spliced list no longer appears verbatim in
       the render, so brand names from data may now be reported as findings. Raised by review here,
