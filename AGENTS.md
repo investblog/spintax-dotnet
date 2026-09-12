@@ -71,6 +71,13 @@ Lessons carried over from `spintax-zenno` (each traces to a real incident):
   terminators, `\G` for sticky, JS `$` → `\z`, mulberry32 + FNV-1a pinned to Node outputs,
   plural counts as `double`, `#def` roll in `Object.keys` order, `JSON.stringify` escapes in
   messages.
+- **Do not write a contract stronger than the code can hold.** "The count is exact or it saturates,
+  never understating" was added to `Census`, `Engine` and the README as a conclusion, not a measured
+  fact — and five review rounds then found five different templates that falsified it, each costing
+  a fix that created the next one. A static walk describing a dynamic engine parts company with it
+  at every exhaustion path. Claim what is pinned by a test, saturate where the walk cannot bound an
+  answer, and put the rest in `docs/TODO.md` as a measured gap. A documented gap is cheap; a
+  documented guarantee that is false is a defect in every reader's plans.
 - **A render change is not done until `Census` makes the same change.** `Combinations` and
   `MaxLength` describe the walk that `Render` performs, so a semantic fix to one silently makes the
   other lie — and the corpus cannot see it, because no fixture asserts a count. The splice fix

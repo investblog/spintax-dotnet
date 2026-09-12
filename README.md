@@ -87,7 +87,10 @@ render with the same seed and get the same bytes.
 
 `Combinations` counts **choice paths** — the number of distinct texts when no two options spell
 the same thing (`{a|a}` is 2). With `vars` it is the count for that one row of data (a conditional
-takes its branch, a plural its form); without, across every state of the data.
+takes its branch, a plural its form); without, across every state of the data. Both are exact for
+an ordinary template and saturate at `long.MaxValue` where the walk cannot bound the answer, rather
+than report a number built on a sub-tree it abandoned. They count the template, not its
+`#include`d children, and the remaining gaps are listed in `docs/TODO.md`.
 
 ## The family
 
@@ -127,7 +130,7 @@ in the same commit. It is empty.
 PASS=277  FAIL=0  SKIP=0    # net8.0 and net472, 2026-09-12
 ```
 
-The port's own unit tests (`tests/Spintax.Core.Tests`, 177 on each host) pin what the corpus
+The port's own unit tests (`tests/Spintax.Core.Tests`, 187 on each host) pin what the corpus
 cannot express: 1-based positions, plural buckets for locales the corpus lacks, JavaScript text
 semantics (`JsText`: the JS whitespace set, the four line terminators, `String.prototype.toUpperCase`
 special casing), the exact census, and the assembly contract — two targets, zero package

@@ -82,6 +82,14 @@ namespace Spintax.Core
         /// spell the same thing (<c>{a|a}</c> counts 2). With <c>vars</c>: for that one row
         /// (conditionals and plurals resolve by the data); without: across all data — every
         /// branch, every plural form. Saturates at <see cref="long.MaxValue"/>.
+        /// <para>
+        /// Exact for an ordinary template. Where the walk cannot bound the answer — the variable
+        /// expansion runs past the engine's own allowance, or a definition chain outruns the
+        /// walk's backstop — it returns <see cref="long.MaxValue"/> rather than a number built on
+        /// a sub-tree it abandoned. It is a count of the template, not a proof of a bound:
+        /// <c>#include</c>d children are not counted (there is no resolver here), and the other
+        /// known gaps are listed in <c>docs/TODO.md</c>.
+        /// </para>
         /// </summary>
         public static long Combinations(string template, IReadOnlyDictionary<string, string>? vars = null, string? locale = null)
         {

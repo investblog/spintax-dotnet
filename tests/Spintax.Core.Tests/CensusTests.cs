@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace Spintax.Core.Tests
@@ -131,6 +132,92 @@ namespace Spintax.Core.Tests
                 seen.Add(Engine.RenderWith(t, rng, new RenderOptions { PostProcess = false }));
             }
             Assert.Equal(census, seen.Count);
+        }
+
+        // ── the exhaustion paths: what the count says where the render stops expanding ──────
+        // Each of these reported a number the engine contradicted until 2026-09-12, and each was
+        // measured against the render before and after (docs/TODO.md, the Codex gate).
+
+        [Fact]
+        public void A_template_past_the_expansion_allowance_saturates_instead_of_understating()
+        {
+            // The render spends the whole allowance on X and leaves %L% literal. Charging nothing,
+            // the census spliced %L% into two options and reported a length three characters SHORT
+            // of the render — understating, the half a host acts on. It cannot say which draw was
+            // cut either, since mutually exclusive branches each deserve what the other spent, so
+            // it stops claiming a number.
+            var row = Row(("X", new string('a', 1024 * 1024)), ("L", "a|b"));
+            var rendered = Engine.Render("%X%{%L%}", new RenderOptions { Context = row, PostProcess = false, Seed = "1" });
+            Assert.EndsWith("%L%", rendered);
+            Assert.Equal(long.MaxValue, Engine.Combinations("%X%{%L%}", row));
+            Assert.Equal(long.MaxValue, Engine.MaxLength("%X%{%L%}", row));
+            Assert.True(Engine.MaxLength("%X%{%L%}", row) >= rendered.Length, "a length must never fall short of a render");
+
+            // Inside the allowance it is still exact, which is every ordinary template.
+            var small = Row(("X", "ab"), ("L", "a|b"));
+            Assert.Equal(2, Engine.Combinations("%X%{%L%}", small));
+            Assert.Equal(3, Engine.MaxLength("%X%{%L%}", small));
+        }
+
+        [Fact]
+        public void A_plural_slot_and_a_branch_past_the_allowance_saturate_too()
+        {
+            var mib = new string('a', 1024 * 1024);
+
+            // The allowance is charged in the plural slots as well, or a walk that spent it
+            // elsewhere would call an understated length exact.
+            var slot = Row(("X", mib), ("S", "a"));
+            var rendered = Engine.Render("%X%{plural 1: %S%|b}", new RenderOptions { Context = slot, PostProcess = false, Locale = "en", Seed = "1" });
+            Assert.EndsWith("%S%", rendered);
+            Assert.Equal(long.MaxValue, Engine.MaxLength("%X%{plural 1: %S%|b}", slot, "en"));
+
+            // Mutually exclusive branches: a render takes one and spends the whole allowance on it,
+            // so neither branch can be judged with what the other left. Counting A first and then
+            // calling B one literal path said 2 where a render of B alone has 3.
+            Assert.Equal(long.MaxValue, Engine.Combinations("{{%A%}|{%B%}}", Row(("A", mib), ("B", "{x|y}"))));
+            Assert.Equal(long.MaxValue, Engine.MaxLength("{{%A%}|{%B%}}", Row(("A", mib), ("B", new string('b', 2 * 1024 * 1024)))));
+        }
+
+        [Fact]
+        public void A_definition_chain_past_the_structural_backstop_saturates_without_overflowing()
+        {
+            // The backstop is this walk's own, not the renderer's, and the walk is recursive: at
+            // 1000 a 1100-long chain overflowed the stack. It sits at 200 and saturates beyond.
+            var defs = string.Join("\n", Enumerable.Range(1, 1100).Select(i => "#def %d" + i + "% = %d" + (i + 1) + "%"));
+            Assert.Equal(long.MaxValue, Engine.MaxLength(defs + "\n#def %d1101% = END\n%d1%"));
+        }
+
+        [Fact]
+        public void A_definition_chain_longer_than_the_variable_cap_is_rolled_in_full()
+        {
+            // The renderer caps VARIABLE hops at 50; rolling a definition is not one, so a 55-long
+            // alias chain reaches END. Counting every descent against that cap returned 0 here.
+            var defs = string.Join("\n", Enumerable.Range(1, 55).Select(i => "#def %d" + i + "% = %d" + (i + 1) + "%"));
+            var t = defs + "\n#def %d56% = END\n%d1%";
+            Assert.Equal("\n\nEND", Engine.Render(t, new RenderOptions { PostProcess = false, Seed = "1" }));
+            Assert.Equal(5, Engine.MaxLength(t));
+        }
+
+        [Fact]
+        public void A_construct_free_definition_splices_into_a_construct_as_the_render_splices_it()
+        {
+            // A #def is rolled once and held, so when its value carries no construct the rolled
+            // text is the value and the census knows what the renderer splices.
+            Assert.Equal(3, Engine.Combinations("#def %L% = a|b|c\n{%L%}"));
+            Assert.Equal(2, Engine.MaxLength("#def %L% = a|b|c\n{%L%}")); // "\n" + one option
+        }
+
+        [Fact]
+        public void A_doubling_macro_ends_at_the_allowance_instead_of_walking_2_to_the_50()
+        {
+            // #set %a% = %b% %b% over #set %b% = %a% %a% doubles the tree at every level: the depth
+            // cap bounds the height, not the width, so this used to visit 2^50 nodes and the
+            // process died. The allowance the renderer charges bounds the work here as well.
+            const string bomb = "#set %a% = %b% %b%\n#set %b% = %a% %a%\n{%a%}";
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Equal(long.MaxValue, Engine.Combinations(bomb));
+            Assert.Equal(long.MaxValue, Engine.MaxLength(bomb));
+            Assert.True(started.ElapsedMilliseconds < 60_000, "the census must end at the allowance, not run away");
         }
     }
 }

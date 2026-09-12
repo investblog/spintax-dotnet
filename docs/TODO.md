@@ -26,33 +26,31 @@ project: spintax-dotnet
 - Per-element permutation separators make `MaxLength` an upper bound (documented in `Census`).
 - `Combinations` counts choice paths: `{a|a}` is 2. Documented; a distinct-text count would need
   output collisions, which the family does not define.
-- **A `#def` value carrying a `|` inside a construct is still counted as one option.** `Census`
-  models the splice for the text it knows — the row's values and `#set` macros — but a `#def` is
-  rolled once per render and its rolled text is unknowable to a static walk, so its reference stays
-  literal in the re-read body. Measured 2026-09-12 with the splice fix; the render is right, the
-  count is the one that lags.
-- **`Census` does not model the render's expansion budget, so a count at the budget edge diverges.**
-  `%X%{%L%}` with a 1 MiB `X` and `L = a|b`: the render spends the whole allowance on `X`, leaves
-  `%L%` literal and produces ONE text of 1048579 chars; `Combinations` reports 2 and `MaxLength`
-  1048577 — understating again. `_spliceBudget` covers only the re-read text; `Variable` and
-  `ExpandRuntimeVars` charge nothing. A shared budget cannot be made exact: the census walks every
-  branch by construction while a render charges in draw order down one. The honest fix is a
-  contract decision — `MaxLength` takes the LONGER of the expanded value and the literal reference
-  at every substitution, becoming a true upper bound instead of an estimate. Measured with the
-  splice fix on 2026-09-12 (Codex gate); the class predates it, the splice only widened it.
-- **`Census`'s recursion cap counts more descents than the renderer's depth cap, so a long
-  definition chain understates.** `Guarded` increments for a `#def` evaluation and a re-read as
-  well as for a value re-parse; `MAX_VARIABLE_DEPTH` in the renderer applies only to the last.
-  Measured 2026-09-12: 55 `#def` aliases ending at `END` render `END`, while `MaxLength` reports 2
-  — `DefLength` hits the cap and returns 0. `_varDepth` (the render-equivalent depth) is already
-  separate and drives the pass arithmetic; what is left is the cap itself, which wants an
-  iterative definition walk rather than a zero at the cap. Pre-existing, and the counters must
-  not be reunited to fix it.
-- **A variable bomb reaches `Engine.Combinations` unbounded** — `#set %a% = %b% %b%` over
-  `#set %b% = %a% %a%` doubles the walk at every level and the depth-50 cap is 2^50 nodes, so the
-  process dies. Measured on `7e05cff` (before the splice fix) and unchanged by it: `Render` has the
-  1 MiB expansion budget, `Census` has one only for the text it expands. Give the symbolic `#set`
-  walk the same allowance.
+### Census: the gaps that remain between a static count and the engine
+
+Five rounds of the Codex gate (2026-09-12) established that "the count never understates" is not a
+property this walk can hold by patching — it is a static tree walk describing a dynamic engine, and
+they part company wherever the render stops expanding. The walk now SATURATES where it cannot bound
+an answer, and the contract is documented as a count, not a proof. These are the known gaps, each
+measured; closing any of them is a design change, not a fix.
+
+- **A `#def` whose value carries a construct, spliced into a construct.** A construct-free
+  definition splices correctly — rolled once and held, so its text is known statically — but one
+  holding `{a|bb}|c` is rolled per render and the splice follows the roll. `Combinations` says 2
+  where the render draws 4 paths over 3 distinct texts. The `Poly` machinery models "rolled once,
+  multiplied once"; splicing PER roll is a different shape.
+- **A `#def` cycle's length.** `DefLength` memoises 0 to break the cycle, so `#def %a% = %a%` is
+  charged nothing and measures nothing: `MaxLength("#def %a% = %a%\n%a%")` is 1 where the render
+  emits `\n%a%`, 4. An accumulating cycle (`#def %a% = x%a%y`) understates further — the render
+  runs to the depth cap. A cycle needs either the renderer's own unrolling or saturation, and
+  saturation would cost `Combinations` an answer that is currently correct (one path).
+- **`#include`d children are not counted.** The renderer charges one allowance across a document
+  and its includes; `Engine.Combinations` / `MaxLength` take no resolver and never see a child. The
+  count is of the template alone — now documented as such rather than implied.
+- **Directive-backed variables in a plural slot or a conditional test.** `ExpandRuntimeVars` and
+  `TakesThen` read the row only, while the renderer tests against the merged map — runtime, `#set`
+  and rolled `#def`. A `#set` that decides a branch is therefore invisible here, so the walk can
+  take a different branch from the render and skip substitutions the render charges.
 - A `%var%` in `minsize=` / `maxsize=`, and a `{?…}` branch carrying a `|` with no reference beside
   it, are not spliced: the construct is not marked. Both match `@spintax/core` 0.7.0 exactly, and
   no corpus case pins either — a family question for `spintax-js`, not a unilateral .NET change.

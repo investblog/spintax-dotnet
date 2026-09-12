@@ -35,20 +35,53 @@ namespace Spintax.Core
     /// and lengths saturate at <see cref="long.MaxValue"/>. The longest permutation is exact
     /// for global separators; with per-element separators the longest of them stands in for every
     /// slot, an upper bound.
+    /// <para>
+    /// <b>Where the render stops expanding, so does the count.</b> The renderer's caps are
+    /// mirrored rather than approximated: the variable cap applies to variable hops only (rolling
+    /// a definition is not one), and a fixpoint that ran out of passes freezes its subtree — a
+    /// reference left over is then literal text, and counts as the length of <c>%name%</c>.
+    /// </para>
+    /// <para>
+    /// <b>Where this walk cannot bound an answer it SATURATES</b> at <see cref="long.MaxValue"/>
+    /// rather than report a number built on a sub-tree it abandoned: the expansion allowance —
+    /// charged here at every substitution the renderer charges — running out anywhere, or the
+    /// structural backstop being reached. That also ends a doubling macro, which used to walk
+    /// 2^50 nodes and kill the process.
+    /// </para>
+    /// <para>
+    /// It is <b>not</b> a proof of an upper bound, and must not be documented as one. This is a
+    /// static walk of a tree describing a dynamic engine, and the two part company wherever the
+    /// render stops expanding: an unexpanded reference emits <c>%name%</c>, which can be LONGER
+    /// than the value it replaced, and mutually exclusive branches each deserve the allowance the
+    /// other spent. The gaps that remain are measured and listed in <c>docs/TODO.md</c> — a
+    /// <c>#def</c> cycle's length, a construct-bearing <c>#def</c> spliced into a construct,
+    /// <c>#include</c>d children (which these entry points never see: they take no resolver), and
+    /// directive-backed variables in a plural slot or a conditional test. For any template that
+    /// stays inside the allowance and uses none of those, the answers are exact — which is every
+    /// ordinary one, and what the tests pin.
+    /// </para>
     /// </remarks>
     internal static class Census
     {
         public static long Combinations(ParsedAst ast, IReadOnlyDictionary<string, string>? vars, string? locale)
         {
             var w = new Walker(ast, vars, locale);
-            var total = w.Expand(w.Sequence(ast.Nodes).poly);
+            w.RollDefinitions();
+            var poly = w.Sequence(ast.Nodes).poly;
+            var total = w.Expand(poly);
+            // AFTER Expand, not before: substituting the referenced definitions walks their bodies,
+            // which charges and can reach the backstop on its own. Checking first returned a finite
+            // total built on variables that had already collapsed to one.
+            if (w.Unbounded) return long.MaxValue;
             return total > long.MaxValue ? long.MaxValue : (long)total;
         }
 
         public static long MaxLength(ParsedAst ast, IReadOnlyDictionary<string, string>? vars, string? locale)
         {
             var w = new Walker(ast, vars, locale);
-            return w.Sequence(ast.Nodes).length;
+            w.RollDefinitions();
+            var length = w.Sequence(ast.Nodes).length;
+            return w.Unbounded ? long.MaxValue : length;
         }
 
         private static readonly Regex IntegerRe = new Regex(@"^-?[0-9]+\z");
@@ -145,6 +178,24 @@ namespace Spintax.Core
             private long _spliceBudget = Renderer.MaxExpansionChars;
 
             /// <summary>
+            /// The allowance ran out somewhere in this walk. It does not mean a RENDER's did — this
+            /// walk visits every branch while a render charges down one — only that the counting
+            /// from here on rests on references this walk stopped expanding. Past that point the
+            /// numbers describe no particular render, so the entry points saturate instead.
+            /// </summary>
+            private bool _budgetExceeded;
+
+            /// <summary>The structural backstop was reached, so a sub-tree was abandoned mid-count.</summary>
+            private bool _capReached;
+
+            /// <summary>
+            /// This walk cannot bound the answer: it either ran out of allowance or hit the
+            /// backstop, and both entry points saturate rather than report a number the engine
+            /// can contradict.
+            /// </summary>
+            public bool Unbounded => _budgetExceeded || _capReached;
+
+            /// <summary>
             /// Inside the subtree of a re-read whose fixpoint ran out of passes, as the renderer's
             /// <c>WalkOptions.Frozen</c>: every reference left is literal text and nothing below
             /// earns a fresh allowance.
@@ -167,6 +218,19 @@ namespace Spintax.Core
             private readonly Dictionary<string, Poly> _defPolys = new Dictionary<string, Poly>(StringComparer.Ordinal);
             private readonly Dictionary<string, long> _defLengths = new Dictionary<string, long>(StringComparer.Ordinal);
             private int _depth;
+
+            /// <summary>
+            /// Roll every definition once, as <c>RollDefinitions</c> does before the walk — even
+            /// one nothing references, which this walk would otherwise never visit and never
+            /// charge. The allowance must cover what the RENDER spends, or "stayed inside it"
+            /// proves nothing. A definition the row outranks is never rolled, there or here.
+            /// </summary>
+            public void RollDefinitions()
+            {
+                foreach (var name in _ast.DefDefs.Keys)
+                    if (!_lowerVars.ContainsKey(name))
+                        DefLength(name);
+            }
 
             public Walker(ParsedAst ast, IReadOnlyDictionary<string, string>? vars, string? locale)
             {
@@ -337,11 +401,18 @@ namespace Spintax.Core
                         var name = m.Groups[1].Value.ToLowerInvariant();
                         if (!_lowerVars.TryGetValue(name, out var value))
                         {
-                            if (_ast.DefDefs.ContainsKey(name)) return m.Value;
-                            if (!_ast.SetDefs.TryGetValue(name, out value)) return m.Value;
+                            if (_ast.DefDefs.TryGetValue(name, out var def))
+                            {
+                                // A #def is rolled once and held. When its value carries no
+                                // construct the roll is the value itself, so the text the renderer
+                                // splices is known here too; when it carries one, the rolled text
+                                // differs per render and the reference stays literal.
+                                if (ContainsAnyOf(def, "{[%")) return m.Value;
+                                value = def;
+                            }
+                            else if (!_ast.SetDefs.TryGetValue(name, out value)) return m.Value;
                         }
-                        if (_spliceBudget <= 0) return m.Value;
-                        _spliceBudget -= value.Length;
+                        if (!Charge(value)) return m.Value;
                         changed = true;
                         return value;
                     });
@@ -374,23 +445,81 @@ namespace Spintax.Core
                 // and a value carrying constructs is re-parsed, as the renderer re-parses it.
                 if (_lowerVars.TryGetValue(name, out var runtime))
                 {
-                    if (!ContainsAnyOf(runtime, "{[%")) return (Poly.One(), runtime.Length);
+                    if (!Charge(runtime)) return Literal(rawName);
+                    if (!ContainsAnyOf(runtime, "{[%")) return (Poly.One(), (long)runtime.Length);
                     return GuardedValue(() => Sequence(Parser.ParseSequence(runtime)), (Poly.One(), (long)runtime.Length));
                 }
-                if (_ast.DefDefs.ContainsKey(name)) return (Poly.Ref(name), DefLength(name));
+                if (_ast.DefDefs.ContainsKey(name))
+                {
+                    // The renderer substitutes the ROLLED text here and charges it; the roll is
+                    // never longer than DefLength, so charging that keeps this walk a superset.
+                    var rolled = DefLength(name);
+                    if (!Charge(rolled)) return Literal(rawName);
+                    return (Poly.Ref(name), rolled);
+                }
                 if (_ast.SetDefs.TryGetValue(name, out var set))
+                {
+                    if (!Charge(set)) return Literal(rawName);
                     // A macro: re-rolled at every reference. At the cap the renderer returns the
                     // VALUE's text unexpanded (`ResolveVariable`), so that is the length here —
                     // zero said a chain ending at its cap contributes nothing, and `MaxLength`
                     // reported 2 for a render of 7.
                     return GuardedValue(() => Sequence(Parser.ParseSequence(set)), (Poly.One(), (long)set.Length));
-                return (Poly.One(), _forRow ? 0 : ("%" + rawName + "%").Length);
+                }
+                // An unresolved name is emitted verbatim by the renderer, so it is that long.
+                return Literal(rawName);
             }
 
-            /// <summary>A self-referencing or very deep chain ends at the renderer's depth cap; so does the count.</summary>
+            /// <summary>
+            /// Debit one substitution against the expansion allowance, as the renderer does before
+            /// every one of its own. <c>false</c> ⇒ the allowance is gone and the reference stays
+            /// literal, which is both the renderer's behaviour and what stops a doubling macro from
+            /// walking 2^50 nodes here.
+            /// </summary>
+            private bool Charge(string value) => Charge(value.Length);
+
+            private bool Charge(long length)
+            {
+                if (_spliceBudget <= 0)
+                {
+                    _budgetExceeded = true;
+                    return false;
+                }
+                _spliceBudget -= length;
+                return true;
+            }
+
+            /// <summary>The reference as the renderer emits it when it does not expand.</summary>
+            private (Poly, long) Literal(string rawName) => (Poly.One(), ("%" + rawName + "%").Length);
+
+            /// <summary>
+            /// A structural backstop for this walk's own recursion — definition evaluation and
+            /// re-reads — NOT a semantic cap. It sits far above any real template because the
+            /// renderer has no equivalent: a 55-long <c>#def</c> alias chain is rolled in full
+            /// there, and a shared cap of 50 made <see cref="MaxLength"/> report 2 for a render
+            /// of 3. The renderer's own cap is <see cref="MaxVarDepth"/>, on variable hops only.
+            /// </summary>
+            /// <remarks>
+            /// 200, not 1000: this walk is recursive, and a 1100-long definition chain at 1000
+            /// overflowed the stack (measured). Four times the renderer's variable cap covers any
+            /// real document, and past it the answer SATURATES rather than understates, so the
+            /// backstop costs precision on a template no one writes, never correctness. Raising it
+            /// means making the definition traversal iterative first.
+            /// </remarks>
+            private const int MaxWalkDepth = 200;
+
+            /// <summary>The renderer's <c>MAX_VARIABLE_DEPTH</c>: at the cap it returns the value's text unexpanded.</summary>
+            private const int MaxVarDepth = 50;
+
             private T Guarded<T>(Func<T> walk, T atCap)
             {
-                if (_depth >= 50) return atCap;
+                if (_depth >= MaxWalkDepth)
+                {
+                    // Abandoning a sub-tree makes every number downstream a guess, so the walk
+                    // stops claiming one. The renderer has no such cap: it is a backstop here.
+                    _capReached = true;
+                    return atCap;
+                }
                 _depth++;
                 try { return walk(); }
                 finally { _depth--; }
@@ -398,10 +527,13 @@ namespace Spintax.Core
 
             /// <summary>
             /// <see cref="Guarded"/> for the two places that re-parse a VALUE — the one descent the
-            /// renderer counts as a variable hop.
+            /// renderer counts as a variable hop, and the one it caps.
             /// </summary>
             private T GuardedValue<T>(Func<T> walk, T atCap)
             {
+                // The renderer's own cap, and it returns the value's text there — so this fallback
+                // is what the render emits, not an abandoned sub-tree.
+                if (_varDepth >= MaxVarDepth) return atCap;
                 _varDepth++;
                 try { return Guarded(walk, atCap); }
                 finally { _varDepth--; }
@@ -463,6 +595,8 @@ namespace Spintax.Core
                     output = VariableRe.Replace(output, m =>
                     {
                         if (!_lowerVars.TryGetValue(m.Groups[1].Value.ToLowerInvariant(), out var value)) return m.Value;
+                        // The same purse the renderer charges a plural slot against.
+                        if (!Charge(value)) return m.Value;
                         changed = true;
                         return value;
                     });
