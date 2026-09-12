@@ -20,7 +20,7 @@
        own, and the zero-PackageReference contract is tested. -->
   <PropertyGroup>
     <PackageId>Spintax.Core</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>301st</Authors>
     <Company>301st</Company>
     <Description>A Spintax engine for .NET: parse, render, validate, extract, analyze and neutralize spintax templates — enumerations, permutations, variables, conditionals, locale-aware plurals, #set / #def / #include, and a post-processing pass. Zero dependencies, netstandard2.0 and net472, held to the Spintax family's shared golden corpus.</Description>

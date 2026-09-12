@@ -14,9 +14,9 @@ project: spintax-dotnet
       `release.yml`, environment `nuget`, packages `Spintax.*`) + the `NUGET_USER` variable;
       `v0.1.0` published 2026-08-23 (run 32600562685: "Your package was pushed", release on GitHub).
 - [ ] After the first package: reserve the `Spintax.*` ID prefix on NuGet.
-- [ ] Release `0.1.1` — the splice fix (#1: a `%var%` inside `{…}`/`[…]` is spliced as text before
+- [x] Release `0.1.1` — the splice fix (#1: a `%var%` inside `{…}`/`[…]` is spliced as text before
       the split; corpus 277/277 on both hosts, 2026-09-12). A behaviour fix toward the family
-      contract is a patch (RELEASING.md); the bump commit is the release decision, not part of the fix.
+      contract is a patch (RELEASING.md).
 
 ## Debts
 
