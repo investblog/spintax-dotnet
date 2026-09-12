@@ -31,6 +31,23 @@ project: spintax-dotnet
   rolled once per render and its rolled text is unknowable to a static walk, so its reference stays
   literal in the re-read body. Measured 2026-09-12 with the splice fix; the render is right, the
   count is the one that lags.
+- **`Census` does not model the render's expansion budget, so a count at the budget edge diverges.**
+  `%X%{%L%}` with a 1 MiB `X` and `L = a|b`: the render spends the whole allowance on `X`, leaves
+  `%L%` literal and produces ONE text of 1048579 chars; `Combinations` reports 2 and `MaxLength`
+  1048577 — understating again. `_spliceBudget` covers only the re-read text; `Variable` and
+  `ExpandRuntimeVars` charge nothing. A shared budget cannot be made exact: the census walks every
+  branch by construction while a render charges in draw order down one. The honest fix is a
+  contract decision — `MaxLength` takes the LONGER of the expanded value and the literal reference
+  at every substitution, becoming a true upper bound instead of an estimate. Measured with the
+  splice fix on 2026-09-12 (Codex gate); the class predates it, the splice only widened it.
+- **`Census`'s recursion cap counts more descents than the renderer's depth cap, so a long
+  definition chain understates.** `Guarded` increments for a `#def` evaluation and a re-read as
+  well as for a value re-parse; `MAX_VARIABLE_DEPTH` in the renderer applies only to the last.
+  Measured 2026-09-12: 55 `#def` aliases ending at `END` render `END`, while `MaxLength` reports 2
+  — `DefLength` hits the cap and returns 0. `_varDepth` (the render-equivalent depth) is already
+  separate and drives the pass arithmetic; what is left is the cap itself, which wants an
+  iterative definition walk rather than a zero at the cap. Pre-existing, and the counters must
+  not be reunited to fix it.
 - **A variable bomb reaches `Engine.Combinations` unbounded** — `#set %a% = %b% %b%` over
   `#set %b% = %a% %a%` doubles the walk at every level and the depth-50 cap is 2^50 nodes, so the
   process dies. Measured on `7e05cff` (before the splice fix) and unchanged by it: `Render` has the

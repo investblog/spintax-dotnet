@@ -217,6 +217,69 @@ namespace Spintax.Core.Tests
         }
 
         [Fact]
+        public void The_census_freezes_what_the_render_freezes()
+        {
+            // 51 aliases onto a terminal construct: the fixpoint runs out still changing, so the
+            // render leaves %a52% literal and freezes the subtree — ONE path, not the two the
+            // terminal enumeration would have brought. A census that granted itself a fresh
+            // fixpoint counted those two (found by the Codex gate, measured 2026-09-12).
+            var frozen = Chain(51) + "\n#set %a52% = {x|y}\n{%a1%}";
+            Assert.Equal("\n\n%a52%", Render(frozen, First));
+            Assert.Equal(1, Engine.Combinations(frozen));
+
+            // The literal reference is what the render emits, so it is what the length counts.
+            Assert.Equal(7, Engine.MaxLength(frozen)); // "\n\n%a52%"
+
+            // Reached through a macro the construct has already spent a hop, so its fixpoint gets
+            // 50: the body freezes at %a51% and only the enumeration's own two options remain.
+            // The terminal is a CONSTRUCT on purpose — an erroneous 51st pass would expose `{y|z}`
+            // and report three paths, which a non-structural terminal cannot tell apart.
+            var viaMacro = "#set %v% = {%a1%|x}\n" + Chain(50) + "\n#set %a51% = {y|z}\n%v%";
+            Assert.Equal("\n\n%a51%", Render(viaMacro, First));
+            Assert.Equal(2, Engine.Combinations(viaMacro));
+        }
+
+        [Fact]
+        public void The_census_gives_a_def_roll_the_depth_the_renderer_gives_it()
+        {
+            // A #def is rolled at depth 0, so its fixpoint gets the full 51 passes and the terminal
+            // list splits. Counting the roll as one level of recursion granted 50 and reported one
+            // path (found by the Codex gate, measured 2026-09-12).
+            var t = "#def %d% = {%a1%}\n" + Chain(50) + "\n#set %a51% = x|y\n%d%";
+            Assert.Equal("\n\nx", Render(t, First));
+            Assert.Equal(2, Engine.Combinations(t));
+        }
+
+        [Fact]
+        public void The_census_freezes_a_plural_form_whose_passes_ran_out()
+        {
+            // The chain is the ROW's, not a #set: the census expands plural slots from the row
+            // only, so a directive chain converges at once and exercises the cap instead of the
+            // freeze. With the row, the fixpoint genuinely runs out — the render leaves %a52%
+            // literal, and dropping the freeze would count END's 3 instead of the reference's 5.
+            // (The first version of this test pinned that coincidence; the Codex gate caught it.)
+            var row = new Dictionary<string, string>();
+            for (var i = 1; i <= 51; i++) row["a" + i] = "%a" + (i + 1) + "%";
+            row["a52"] = "END";
+
+            const string t = "{plural 1: %a1%|two}";
+            Assert.Equal("%a52%", Render(t, First, row, "en"));
+            Assert.Equal(1, Engine.Combinations(t, row, "en"));
+            Assert.Equal(5, Engine.MaxLength(t, row, "en"));
+        }
+
+        [Fact]
+        public void An_alias_chain_that_ends_at_the_depth_cap_counts_the_value_the_render_emits()
+        {
+            // At the cap the renderer returns the VALUE's text unexpanded, so that is the length:
+            // zero said a chain ending there contributes nothing, and MaxLength reported 2 for a
+            // render of 7.
+            var t = Chain(51) + "\n#set %a52% = END\n{plural 1: %a1%|two}";
+            Assert.Equal("\n\n%a52%", Render(t, First, null, "en"));
+            Assert.Equal(7, Engine.MaxLength(t, new Dictionary<string, string>(), "en"));
+        }
+
+        [Fact]
         public void The_census_agrees_with_an_exhaustive_enumeration_of_a_spliced_permutation()
         {
             const string t = "[<minsize=1;maxsize=2;sep=\", \">%L%]";

@@ -143,6 +143,25 @@ namespace Spintax.Core
 
             /// <summary>Characters of textual expansion left for this walk — the renderer's allowance, for the renderer's reason.</summary>
             private long _spliceBudget = Renderer.MaxExpansionChars;
+
+            /// <summary>
+            /// Inside the subtree of a re-read whose fixpoint ran out of passes, as the renderer's
+            /// <c>WalkOptions.Frozen</c>: every reference left is literal text and nothing below
+            /// earns a fresh allowance.
+            /// </summary>
+            private bool _frozen;
+
+            /// <summary>
+            /// The RENDERER's variable-expansion depth, which is not this walk's recursion depth:
+            /// <c>ResolveVariable</c> goes <c>Deeper()</c> only when a VALUE is re-parsed, so a
+            /// <c>#def</c> roll and a re-read stay at the depth they were reached at.
+            /// <see cref="Guarded"/> counts every descent — using it for the pass arithmetic gave
+            /// a definition 50 passes where the render gives 51.
+            /// </summary>
+            private int _varDepth;
+
+            /// <summary>The passes a textual fixpoint may run from here — the renderer's <c>PassesLeft</c>.</summary>
+            private int PassesLeft => Math.Max(1, Passes - _varDepth);
             private readonly bool _forRow;
             private readonly string _baseLang;
             private readonly Dictionary<string, Poly> _defPolys = new Dictionary<string, Poly>(StringComparer.Ordinal);
@@ -273,14 +292,30 @@ namespace Spintax.Core
             /// </remarks>
             private (Poly, long)? ReRead(string? raw, char open, char close)
             {
-                if (raw is null) return null;
+                if (raw is null || _frozen) return null;
                 // Only a row can take a branch; without one the conditional survives into the
                 // re-parsed tree and both branches are counted, as everywhere else in this walk.
                 var text = _forRow ? Renderer.ResolveConditionalsInText(raw, TakesThen) : raw;
-                var expanded = ExpandMacros(text);
-                var body = _forRow ? Renderer.ResolveConditionalsInText(expanded, TakesThen) : expanded;
+                // The renderer's arithmetic: the fixpoint is 51 passes over the whole text, ONCE,
+                // and a construct reached through a macro re-parse has already spent `_depth` of
+                // those hops. A flat 51 here resolved a chain the render leaves literal.
+                var expanded = ExpandMacros(text, PassesLeft);
+                var body = _forRow ? Renderer.ResolveConditionalsInText(expanded.Text, TakesThen) : expanded.Text;
                 if (body == raw) return null;
-                return Guarded(() => Sequence(Parser.ParseSequence(open + body + close)), (Poly.One(), 0L));
+                if (expanded.Converged) return Guarded(() => Sequence(Parser.ParseSequence(open + body + close)), (Poly.One(), 0L));
+                // Still changing on the last allowed pass: the renderer freezes the whole subtree,
+                // so every reference left in it is literal text and earns no fresh allowance here
+                // either — otherwise the count describes an expansion the render never performs.
+                return Frozen(() => Guarded(() => Sequence(Parser.ParseSequence(open + body + close)), (Poly.One(), 0L)));
+            }
+
+            /// <summary>Run <paramref name="walk"/> with every remaining reference literal (the renderer's <c>WalkOptions.Frozen</c>).</summary>
+            private T Frozen<T>(Func<T> walk)
+            {
+                var was = _frozen;
+                _frozen = true;
+                try { return walk(); }
+                finally { _frozen = was; }
             }
 
             /// <summary>
@@ -291,10 +326,10 @@ namespace Spintax.Core
             /// <c>#set %b% = %a% %a%</c> doubles every pass, and counting must not allocate what
             /// rendering refuses to.
             /// </summary>
-            private string ExpandMacros(string text)
+            private Fixpoint ExpandMacros(string text, int passes)
             {
                 var output = text;
-                for (var i = 0; i < Passes; i++)
+                for (var i = 0; i < passes; i++)
                 {
                     var changed = false;
                     output = VariableRe.Replace(output, m =>
@@ -310,9 +345,16 @@ namespace Spintax.Core
                         changed = true;
                         return value;
                     });
-                    if (!changed) break;
+                    if (!changed) return new Fixpoint { Text = output, Converged = true };
                 }
-                return output;
+                return new Fixpoint { Text = output, Converged = false };
+            }
+
+            /// <summary>The outcome of <see cref="ExpandMacros"/> — the renderer's <c>Fixpoint</c>, for the same caller decision.</summary>
+            private struct Fixpoint
+            {
+                public string Text;
+                public bool Converged;
             }
 
             /// <summary>Truthy exactly as the renderer: set, and has a non-whitespace char.</summary>
@@ -325,16 +367,23 @@ namespace Spintax.Core
             private (Poly, long) Variable(string rawName)
             {
                 var name = rawName.ToLowerInvariant();
+                // Inside a frozen subtree every reference is literal text, exactly as the renderer
+                // emits it — not the value, and not the variety the value would have brought.
+                if (_frozen) return (Poly.One(), ("%" + rawName + "%").Length);
                 // Runtime context outranks a definition of the same name, as in the renderer —
                 // and a value carrying constructs is re-parsed, as the renderer re-parses it.
                 if (_lowerVars.TryGetValue(name, out var runtime))
                 {
                     if (!ContainsAnyOf(runtime, "{[%")) return (Poly.One(), runtime.Length);
-                    return Guarded(() => Sequence(Parser.ParseSequence(runtime)), (Poly.One(), (long)runtime.Length));
+                    return GuardedValue(() => Sequence(Parser.ParseSequence(runtime)), (Poly.One(), (long)runtime.Length));
                 }
                 if (_ast.DefDefs.ContainsKey(name)) return (Poly.Ref(name), DefLength(name));
                 if (_ast.SetDefs.TryGetValue(name, out var set))
-                    return Guarded(() => Sequence(Parser.ParseSequence(set)), (Poly.One(), 0L)); // a macro: re-rolled here
+                    // A macro: re-rolled at every reference. At the cap the renderer returns the
+                    // VALUE's text unexpanded (`ResolveVariable`), so that is the length here —
+                    // zero said a chain ending at its cap contributes nothing, and `MaxLength`
+                    // reported 2 for a render of 7.
+                    return GuardedValue(() => Sequence(Parser.ParseSequence(set)), (Poly.One(), (long)set.Length));
                 return (Poly.One(), _forRow ? 0 : ("%" + rawName + "%").Length);
             }
 
@@ -348,6 +397,17 @@ namespace Spintax.Core
             }
 
             /// <summary>
+            /// <see cref="Guarded"/> for the two places that re-parse a VALUE — the one descent the
+            /// renderer counts as a variable hop.
+            /// </summary>
+            private T GuardedValue<T>(Func<T> walk, T atCap)
+            {
+                _varDepth++;
+                try { return Guarded(walk, atCap); }
+                finally { _varDepth--; }
+            }
+
+            /// <summary>
             /// The renderer's plural stage, mirrored: brackets in the forms → verbatim; arity →
             /// verbatim; for a row, the count resolved (row values, count conditionals) and
             /// tested as <c>-?[0-9]+</c> — non-numeric erases; a count that still depends on a
@@ -355,8 +415,13 @@ namespace Spintax.Core
             /// </summary>
             private (Poly, long) Plural(PluralNode p)
             {
-                var countRaw = _forRow ? ExpandRuntimeVars(p.CountRaw) : p.CountRaw;
-                var formsRaw = _forRow ? ExpandRuntimeVars(p.FormsRaw) : p.FormsRaw;
+                // Both slots take the same pass arithmetic as a re-read, and a frozen subtree
+                // expands nothing — the renderer's fixpoint returns its text untouched there.
+                var passes = PassesLeft;
+                var countPass = _forRow && !_frozen ? ExpandRuntimeVars(p.CountRaw, passes) : new Fixpoint { Text = p.CountRaw, Converged = true };
+                var formsPass = _forRow && !_frozen ? ExpandRuntimeVars(p.FormsRaw, passes) : new Fixpoint { Text = p.FormsRaw, Converged = true };
+                var countRaw = countPass.Text;
+                var formsRaw = formsPass.Text;
                 long verbatim = ("{plural " + countRaw + ":" + formsRaw + "}").Length;
                 if (ContainsAnyOf(formsRaw, "{}[]")) return (Poly.One(), verbatim);
                 var forms = formsRaw.Split('|');
@@ -370,14 +435,18 @@ namespace Spintax.Core
                     {
                         count = Parser.PhpTrim(count);
                         if (!IntegerRe.IsMatch(count)) return (Poly.One(), 0);
-                        return Sequence(Parser.ParseSequence(Plurals.PluralFor(_baseLang, ParseCount(count), forms)));
+                        var picked = Parser.ParseSequence(Plurals.PluralFor(_baseLang, ParseCount(count), forms));
+                        // A form list whose passes ran out renders FROZEN, so what is left in the
+                        // picked form is literal text — not a chain the count may follow further.
+                        return formsPass.Converged ? Sequence(picked) : Frozen(() => Sequence(picked));
                     }
                 }
                 var poly = new Poly();
                 long length = 0;
                 foreach (var f in forms)
                 {
-                    var (fp, l) = Sequence(Parser.ParseSequence(f));
+                    var nodes = Parser.ParseSequence(f);
+                    var (fp, l) = formsPass.Converged ? Sequence(nodes) : Frozen(() => Sequence(nodes));
                     poly = Poly.Add(poly, fp);
                     length = Math.Max(length, l);
                 }
@@ -385,10 +454,10 @@ namespace Spintax.Core
             }
 
             /// <summary>%name% → the row's value, repeatedly, as the renderer's ExpandVarsFixpoint; other names stay.</summary>
-            private string ExpandRuntimeVars(string text)
+            private Fixpoint ExpandRuntimeVars(string text, int passes)
             {
                 var output = text;
-                for (var i = 0; i < Passes; i++)
+                for (var i = 0; i < passes; i++)
                 {
                     var changed = false;
                     output = VariableRe.Replace(output, m =>
@@ -397,9 +466,9 @@ namespace Spintax.Core
                         changed = true;
                         return value;
                     });
-                    if (!changed) break;
+                    if (!changed) return new Fixpoint { Text = output, Converged = true };
                 }
-                return output;
+                return new Fixpoint { Text = output, Converged = false };
             }
 
             /// <summary>
@@ -426,7 +495,10 @@ namespace Spintax.Core
                         case VariableNode v:
                             {
                                 var name = v.Name.ToLowerInvariant();
-                                if (_ast.DefDefs.ContainsKey(name) || _ast.SetDefs.ContainsKey(name)) return false;
+                                // Frozen, a directive reference is literal text — so the count is
+                                // non-numeric and the render ERASES the block, rather than the
+                                // "unknown roll, count every form" this returns otherwise.
+                                if (!_frozen && (_ast.DefDefs.ContainsKey(name) || _ast.SetDefs.ContainsKey(name))) return false;
                                 sb.Append('%').Append(v.Name).Append('%');
                                 break;
                             }
