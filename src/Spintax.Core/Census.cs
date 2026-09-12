@@ -133,6 +133,16 @@ namespace Spintax.Core
         {
             private readonly ParsedAst _ast;
             private readonly Dictionary<string, string> _lowerVars = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            /// <summary>
+            /// The renderer's textual fixpoint runs <c>51 - depth</c> passes and this walk starts
+            /// at depth 0 — a count that stopped one hop earlier than the render it describes
+            /// would erase a plural block the engine resolves.
+            /// </summary>
+            private const int Passes = 51;
+
+            /// <summary>Characters of textual expansion left for this walk — the renderer's allowance, for the renderer's reason.</summary>
+            private long _spliceBudget = Renderer.MaxExpansionChars;
             private readonly bool _forRow;
             private readonly string _baseLang;
             private readonly Dictionary<string, Poly> _defPolys = new Dictionary<string, Poly>(StringComparer.Ordinal);
@@ -216,6 +226,8 @@ namespace Spintax.Core
                         return Variable(v.Name);
                     case EnumerationNode e:
                         {
+                            var re = ReRead(e.Raw, '{', '}');
+                            if (re != null) return re.Value;
                             var poly = new Poly();
                             long length = 0;
                             foreach (var option in e.Options)
@@ -236,10 +248,71 @@ namespace Spintax.Core
                     case PluralNode p:
                         return Plural(p);
                     case PermutationNode perm:
-                        return Permutation(perm);
+                        {
+                            var re = ReRead(perm.Raw, '[', ']');
+                            return re ?? Permutation(perm);
+                        }
                     default:
                         return (Poly.One(), 0);
                 }
+            }
+
+            /// <summary>
+            /// The renderer's splice, mirrored (<c>Renderer.SpliceConstruct</c>): a construct the
+            /// parser marked (<c>Raw</c>) is re-read from its expanded body, so a <c>|</c> a value
+            /// carries separates options here exactly as it does there. <c>null</c> when the node
+            /// is not marked or the body does not change — then the caller counts the parsed tree,
+            /// which is what the renderer walks in that case too.
+            /// </summary>
+            /// <remarks>
+            /// What it can expand is what the census knows as TEXT: the row's values and
+            /// <c>#set</c> macros. A <c>#def</c> is rolled once per render and its rolled text is
+            /// unknowable here, so its reference stays literal in the body and keeps the symbolic
+            /// <c>Poly.Ref</c> handling — a <c>#def</c> value carrying a <c>|</c> inside a
+            /// construct is therefore still counted as one option (<c>docs/TODO.md</c>).
+            /// </remarks>
+            private (Poly, long)? ReRead(string? raw, char open, char close)
+            {
+                if (raw is null) return null;
+                // Only a row can take a branch; without one the conditional survives into the
+                // re-parsed tree and both branches are counted, as everywhere else in this walk.
+                var text = _forRow ? Renderer.ResolveConditionalsInText(raw, TakesThen) : raw;
+                var expanded = ExpandMacros(text);
+                var body = _forRow ? Renderer.ResolveConditionalsInText(expanded, TakesThen) : expanded;
+                if (body == raw) return null;
+                return Guarded(() => Sequence(Parser.ParseSequence(open + body + close)), (Poly.One(), 0L));
+            }
+
+            /// <summary>
+            /// The renderer's <c>ExpandVarsFixpoint</c> over the names the census knows as text:
+            /// the row's values first (they outrank everything), then <c>#set</c> macros; a
+            /// <c>#def</c> name is left literal. Charged against <see cref="_spliceBudget"/> for
+            /// the reason the renderer has a budget at all — <c>#set %a% = %b% %b%</c> over
+            /// <c>#set %b% = %a% %a%</c> doubles every pass, and counting must not allocate what
+            /// rendering refuses to.
+            /// </summary>
+            private string ExpandMacros(string text)
+            {
+                var output = text;
+                for (var i = 0; i < Passes; i++)
+                {
+                    var changed = false;
+                    output = VariableRe.Replace(output, m =>
+                    {
+                        var name = m.Groups[1].Value.ToLowerInvariant();
+                        if (!_lowerVars.TryGetValue(name, out var value))
+                        {
+                            if (_ast.DefDefs.ContainsKey(name)) return m.Value;
+                            if (!_ast.SetDefs.TryGetValue(name, out value)) return m.Value;
+                        }
+                        if (_spliceBudget <= 0) return m.Value;
+                        _spliceBudget -= value.Length;
+                        changed = true;
+                        return value;
+                    });
+                    if (!changed) break;
+                }
+                return output;
             }
 
             /// <summary>Truthy exactly as the renderer: set, and has a non-whitespace char.</summary>
@@ -311,11 +384,11 @@ namespace Spintax.Core
                 return (poly, length);
             }
 
-            /// <summary>%name% → the row's value, repeatedly, as the renderer's ExpandVarsOnly; other names stay.</summary>
+            /// <summary>%name% → the row's value, repeatedly, as the renderer's ExpandVarsFixpoint; other names stay.</summary>
             private string ExpandRuntimeVars(string text)
             {
                 var output = text;
-                for (var i = 0; i < 50; i++)
+                for (var i = 0; i < Passes; i++)
                 {
                     var changed = false;
                     output = VariableRe.Replace(output, m =>

@@ -13,6 +13,13 @@ namespace Spintax.Core
     /// mitigation. The PUA range is reserved: <c>Parser</c> strips stray sentinels from author
     /// markup (template source and include results) so that only <see cref="Neutralize"/> can
     /// introduce them.
+    /// <para>
+    /// The pipe is deliberately not in the set: <c>|</c> means nothing outside a construct.
+    /// Inside one it does — a neutralized value the author places in <c>{…}</c> or <c>[…]</c> is
+    /// still split on its <c>|</c>, in every engine: the reference expands before it reads a
+    /// bracket, and this engine splices a direct reference the same way (spintax-dotnet#1).
+    /// Shielding it would be a family-wide contract change.
+    /// </para>
     /// </remarks>
     internal static class Shield
     {

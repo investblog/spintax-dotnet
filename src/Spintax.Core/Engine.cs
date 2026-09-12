@@ -95,9 +95,15 @@ namespace Spintax.Core
         }
 
         /// <summary>
-        /// Shield a value so that its structural characters (<c>{ } [ ] | %</c> …) survive a
-        /// render as literal text instead of being read as markup.
+        /// Shield a value so that its structural characters (<c>{ } [ ] % #</c>) survive a render
+        /// as literal text instead of being read as markup.
         /// </summary>
+        /// <remarks>
+        /// The pipe is deliberately NOT shielded: it means nothing outside a construct, and inside
+        /// one it is the separator in every engine of the family. A shielded value an author places
+        /// in <c>{…}</c> or <c>[…]</c> is still split on its <c>|</c> — keep such a value out of a
+        /// construct if it must stay one option.
+        /// </remarks>
         public static string Neutralize(string value)
         {
             return Shield.Neutralize(value);

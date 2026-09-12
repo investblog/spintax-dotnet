@@ -33,9 +33,23 @@ namespace Spintax.Core
     /// <summary><c>{a|b|c}</c> — pick one option; each option is a node sequence.</summary>
     internal sealed class EnumerationNode : Node
     {
-        public EnumerationNode(IReadOnlyList<IReadOnlyList<Node>> options) { Options = options; }
+        public EnumerationNode(IReadOnlyList<IReadOnlyList<Node>> options, string? raw = null)
+        {
+            Options = options;
+            Raw = raw;
+        }
 
         public IReadOnlyList<IReadOnlyList<Node>> Options { get; }
+
+        /// <summary>
+        /// The content between the braces, kept ONLY when an option holds a direct <c>%var%</c>
+        /// reference (<c>Parser.HasDirectReference</c>). The renderer splices such a value into
+        /// the body as TEXT and re-reads the construct, because a <c>|</c> inside a substituted
+        /// value separates options in the reference engines — their expansion runs before any
+        /// bracket is read. <c>null</c> on every other construct, so the parsed tree stays the
+        /// one rendered.
+        /// </summary>
+        public string? Raw { get; }
     }
 
     /// <summary>Permutation <c>&lt;config&gt;</c>; a <c>null</c> size ⇒ default rules at render (spec §4.2).</summary>
@@ -75,15 +89,25 @@ namespace Spintax.Core
     /// <summary><c>[&lt;config&gt;a|b|c]</c> — select / shuffle / join.</summary>
     internal sealed class PermutationNode : Node
     {
-        public PermutationNode(PermConfig config, IReadOnlyList<PermOption> options)
+        public PermutationNode(PermConfig config, IReadOnlyList<PermOption> options, string? raw = null)
         {
             Config = config;
             Options = options;
+            Raw = raw;
         }
 
         public PermConfig Config { get; }
 
         public IReadOnlyList<PermOption> Options { get; }
+
+        /// <summary>
+        /// The FULL inner text, <c>&lt;config&gt;</c> included, kept only when the construct holds
+        /// a direct <c>%var%</c> reference — in an element, in a conditional's branch, in the
+        /// config's separators or in a per-element one. The re-read starts from the config again,
+        /// so <c>[&lt;sep="%S%"&gt;a|b]</c> takes its separator from the value, as it does in the
+        /// reference engines. <c>null</c> otherwise.
+        /// </summary>
+        public string? Raw { get; }
     }
 
     /// <summary>

@@ -329,20 +329,57 @@ namespace Spintax.Core
             }
             return new Planned(new ChildPlan(
                 SplitTopLevel(content),
-                children => new EnumerationNode(children)));
+                children => new EnumerationNode(children, HasDirectReference(children) ? content : null)));
         }
+
+        /// <summary>
+        /// Does a construct body hold a <c>%var%</c> that expansion would splice at THIS
+        /// construct's own level? One at the top level of an option counts, and so does one inside
+        /// a conditional's branches: the reference engines resolve <c>{?…}</c> before they expand,
+        /// so a branch's text lands in the body ahead of the split. Nested enumerations /
+        /// permutations / plurals are not entered — a value inside them is spliced when THEY
+        /// render, and a <c>|</c> it carries belongs to them. Iterative (#68): a deep chain of
+        /// conditionals is content, and the parser must not throw on content.
+        /// </summary>
+        public static bool HasDirectReference(IReadOnlyList<IReadOnlyList<Node>> lists)
+        {
+            var stack = new Stack<IReadOnlyList<Node>>(lists);
+            while (stack.Count > 0)
+            {
+                foreach (var node in stack.Pop())
+                {
+                    if (node is VariableNode) return true;
+                    if (node is ConditionalNode c)
+                    {
+                        stack.Push(c.Then);
+                        stack.Push(c.Else);
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>A <c>%var%</c> reference written inside a separator string — config or per-element.</summary>
+        private static readonly Regex ReferenceRe = new Regex("%" + Word + "+%");
 
         /// <summary><c>[&lt;config&gt;a|b|c]</c> — config and per-element separators resolve here; the elements are parsed by the loop.</summary>
         private static Planned PlanPermutation(string rawInner)
         {
             var (config, content) = ExtractPermutationConfig(rawInner);
             var (texts, separators) = PermutationElements(SplitTopLevel(content));
+            // The reference engines expand the config and the per-element separators too — to
+            // them it is all text — so a reference written there is as direct as one in an element.
+            var separatorHasRef = ReferenceRe.IsMatch(config.Sep)
+                || (config.LastSep != null && ReferenceRe.IsMatch(config.LastSep));
+            foreach (var sep in separators)
+                if (sep != null && ReferenceRe.IsMatch(sep)) separatorHasRef = true;
             return new Planned(new ChildPlan(texts, children =>
             {
                 var options = new List<PermOption>(children.Count);
                 for (var i = 0; i < children.Count; i++)
                     options.Add(new PermOption(children[i], i < separators.Count ? separators[i] : null));
-                return new PermutationNode(config, options);
+                return new PermutationNode(config, options,
+                    separatorHasRef || HasDirectReference(children) ? rawInner : null);
             }));
         }
 

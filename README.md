@@ -11,8 +11,8 @@ source: it runs on .NET Framework 4.7.2+ and on every .NET since.
 This is the fifth engine in the Spintax family, and an **independent implementation** — not a
 transcription of the others. It is held to the same behaviour contract by a **shared golden
 corpus** of language-neutral fixtures, the one that gates the TypeScript, PHP, Python and Object
-Pascal engines. All **258 of its cases pass here, on both targets, none skipped, none expected to
-fail** — the 254 deterministic ones on output, the 4 `kind:rng` ones through the engine's RNG seam.
+Pascal engines. All **277 of its cases pass here, on both targets, none skipped, none expected to
+fail** — the 273 deterministic ones on output, the 4 `kind:rng` ones through the engine's RNG seam.
 
 ## Install
 
@@ -48,9 +48,14 @@ capitalisation, spacing around punctuation, URLs and abbreviations left intact; 
 `PostProcess = false` to get the raw pick.
 
 Values in `Context` are **re-parsed as templates** when they contain `{`, `[` or `%` — the
-reference engine does the same, so a host can pass spintax through a variable on purpose. Data
-from a table or a scraped page must go through `Engine.Neutralize(value)` first: it shields the
-structural characters so that `Aurix {Mini|Maxi}` prints as written instead of spinning.
+reference engine does the same, so a host can pass spintax through a variable on purpose. A
+`%var%` written **inside** `{…}` or `[…]` is spliced into the construct as text before the body is
+split, so a value `a|b|c` in `[<minsize=2;sep=", ">%list%]` is three elements, exactly as in the
+PHP engines. Data from a table or a scraped page must go through `Engine.Neutralize(value)` first:
+it shields the structural characters so that `Aurix {Mini|Maxi}` prints as written instead of
+spinning. The pipe is deliberately **not** shielded — it means nothing outside a construct, and
+inside one it is the separator in every engine of the family; keep such a value out of a construct
+if it must stay one option.
 
 Syntax — enumerations `{a|b}`, permutations `[<minsize=2;sep=", ">a|b|c]`, variables `%name%`,
 conditionals `{?VAR?yes|no}`, plural agreement `{plural %n%: one|few|many}`, comments `/# … #/`,
@@ -119,10 +124,10 @@ sense: a new failure fails the build, and a case that starts passing must be rem
 in the same commit. It is empty.
 
 ```
-PASS=258  FAIL=0  SKIP=0    # net8.0 and net472, 2026-08-22
+PASS=277  FAIL=0  SKIP=0    # net8.0 and net472, 2026-09-12
 ```
 
-The port's own unit tests (`tests/Spintax.Core.Tests`, 157 on each host) pin what the corpus
+The port's own unit tests (`tests/Spintax.Core.Tests`, 177 on each host) pin what the corpus
 cannot express: 1-based positions, plural buckets for locales the corpus lacks, JavaScript text
 semantics (`JsText`: the JS whitespace set, the four line terminators, `String.prototype.toUpperCase`
 special casing), the exact census, and the assembly contract — two targets, zero package

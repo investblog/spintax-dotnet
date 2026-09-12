@@ -100,7 +100,7 @@ namespace Spintax.Core
     internal sealed class WalkOptions
     {
         public WalkOptions(IReadOnlyDictionary<string, string> vars, Rng rng, string locale, int depth, Budget budget,
-            Action<PluralIssue>? onPluralError)
+            Action<PluralIssue>? onPluralError, bool frozen = false)
         {
             Vars = vars;
             Rng = rng;
@@ -108,6 +108,7 @@ namespace Spintax.Core
             Depth = depth;
             Budget = budget;
             OnPluralError = onPluralError;
+            Frozen = frozen;
         }
 
         public IReadOnlyDictionary<string, string> Vars { get; }
@@ -124,17 +125,31 @@ namespace Spintax.Core
 
         public Action<PluralIssue>? OnPluralError { get; }
 
-        public WalkOptions WithVars(IReadOnlyDictionary<string, string> vars) =>
-            new WalkOptions(vars, Rng, Locale, Depth, Budget, OnPluralError);
+        /// <summary>
+        /// Every reference is literal from here down (<c>Renderer.SpliceConstruct</c>). Set for
+        /// the subtree of a construct whose textual fixpoint ran out of passes: the plugin runs
+        /// ONE fixpoint of 51 passes and then reads text, so whatever it left unexpanded stays
+        /// unexpanded — in the body, in a nested construct, in a plural slot. Without this a
+        /// leftover would earn a fresh allowance from every walker that met it.
+        /// </summary>
+        public bool Frozen { get; }
 
-        public WalkOptions Deeper() => new WalkOptions(Vars, Rng, Locale, Depth + 1, Budget, OnPluralError);
+        public WalkOptions WithVars(IReadOnlyDictionary<string, string> vars) =>
+            new WalkOptions(vars, Rng, Locale, Depth, Budget, OnPluralError, Frozen);
+
+        public WalkOptions Deeper() => new WalkOptions(Vars, Rng, Locale, Depth + 1, Budget, OnPluralError, Frozen);
+
+        public WalkOptions AsFrozen() => new WalkOptions(Vars, Rng, Locale, Depth, Budget, OnPluralError, true);
     }
 
     /// <summary>
     /// Port of <c>internal/render.ts</c> — the tree walk with the plugin's staged semantics:
     /// <c>#set</c> is a macro re-rendered at every reference, <c>#def</c> is rolled once against
     /// the full context, conditionals test raw truthiness, plurals expand variables first and
-    /// fall back to fullwidth braces, <c>#include</c> is a post-tree line pass. The RNG ORDER is
+    /// fall back to fullwidth braces, <c>#include</c> is a post-tree line pass. A <c>%var%</c>
+    /// that sits DIRECTLY in an enumeration/permutation body is spliced as TEXT and the construct
+    /// re-read (<see cref="SpliceConstruct"/>): a <c>|</c> inside such a value separates options,
+    /// exactly as in the plugin, whose expansion runs before any bracket is read. The RNG ORDER is
     /// the contract: an enumeration picks before it descends (an unpicked branch never draws),
     /// a permutation renders every element first and draws for size and shuffle after.
     /// </summary>
@@ -440,7 +455,7 @@ namespace Spintax.Core
                 case VariableNode v:
                     return ResolveVariable(v.Name, opts);
                 case EnumerationNode e:
-                    return RenderEnumeration(e.Options, opts);
+                    return RenderEnumeration(e, opts);
                 case PermutationNode p:
                     return RenderPermutation(p, opts);
                 case ConditionalNode c:
@@ -462,12 +477,32 @@ namespace Spintax.Core
         /// </summary>
         private static (string, Pending?) ResolveVariable(string name, WalkOptions opts)
         {
-            if (!opts.Vars.TryGetValue(name.ToLowerInvariant(), out var value)) return ("%" + name + "%", null);
-            if (opts.Depth >= MaxVariableDepth || !ContainsAnyOf(value, "{[%")) return (value, null);
+            if (opts.Frozen || !opts.Vars.TryGetValue(name.ToLowerInvariant(), out var value)) return ("%" + name + "%", null);
+            // The budget is checked BEFORE the plain-value shortcut, so every substitution is
+            // charged, as it is in the plugin. A plain value used to be free — harmless while it
+            // could only be a leaf, and the one door left open once a re-read construct
+            // (SpliceConstruct) could hand this function references its fixpoint had cut off:
+            // 2^k of them, each to a 64 KB value, expanded here for nothing (reference review).
             if (opts.Budget.Left <= 0) return ("%" + name + "%", null);
             opts.Budget.Left -= value.Length;
+            if (opts.Depth >= MaxVariableDepth || !ContainsAnyOf(value, "{[%")) return (value, null);
             // ParseSequence, NOT ParseTemplate: a value is not re-comment-stripped or re-#set-extracted.
             return (RenderNodes(Parser.ParseSequence(value), opts.Deeper()), null);
+        }
+
+        /// <summary>
+        /// The passes a textual fixpoint may run from this point of the walk: the plugin's loop
+        /// is <c>&lt;= MAX_VARIABLE_DEPTH</c> — 51 passes, once, over the whole text — and a
+        /// construct or slot reached through a macro re-parse has already spent <c>Depth</c> of
+        /// those hops in <see cref="ResolveVariable"/>. Never below one.
+        /// </summary>
+        private static int PassesLeft(WalkOptions opts) => Math.Max(1, MaxVariableDepth - opts.Depth + 1);
+
+        /// <summary>The outcome of <see cref="ExpandVarsFixpoint"/>.</summary>
+        private struct Fixpoint
+        {
+            public string Text;
+            public bool Converged;
         }
 
         private static bool ContainsAnyOf(string s, string set)
@@ -477,11 +512,19 @@ namespace Spintax.Core
             return false;
         }
 
-        /// <summary>Variable expansion ONLY (plugin <c>expand_variables</c> fixpoint) — enums/perms stay literal.</summary>
-        private static string ExpandVarsOnly(string text, WalkOptions opts)
+        /// <summary>
+        /// Variable expansion ONLY (plugin <c>expand_variables</c> fixpoint) — enums/perms stay
+        /// literal — with the fact a caller may need: whether a pass came back unchanged before
+        /// the pass budget ran out. Not converged means the text was still changing on the last
+        /// allowed pass — a cycle or a chain deeper than the budget — and the caller must then
+        /// keep every leftover reference literal (<see cref="WalkOptions.Frozen"/>), because the
+        /// plugin never expands again after its one fixpoint.
+        /// </summary>
+        private static Fixpoint ExpandVarsFixpoint(string text, WalkOptions opts, int passes)
         {
+            if (opts.Frozen) return new Fixpoint { Text = text, Converged = true };
             var output = text;
-            for (var i = 0; i < MaxVariableDepth; i++)
+            for (var i = 0; i < passes; i++)
             {
                 var changed = false;
                 output = VariableRe.Replace(output, m =>
@@ -493,9 +536,9 @@ namespace Spintax.Core
                     changed = true;
                     return value;
                 });
-                if (!changed) break;
+                if (!changed) return new Fixpoint { Text = output, Converged = true };
             }
-            return output;
+            return new Fixpoint { Text = output, Converged = false };
         }
 
         /// <summary>Truthy = the raw var value is set and has a non-whitespace char (plugin <c>is_truthy</c>; JS <c>\S</c>).</summary>
@@ -513,12 +556,21 @@ namespace Spintax.Core
         }
 
         /// <summary>
-        /// Resolve conditionals in the plural COUNT slot textually — the taken branch is
-        /// substituted, never rendered (spintax-js#67): enums and permutations resolve AFTER
-        /// plurals, so a branch yielding <c>{a|b}</c> must reach the numeric test as such and
-        /// erase the block. Iterative over spans, linear.
+        /// Resolve conditionals in a piece of text textually — the taken branch is substituted,
+        /// never rendered. Three callers: the plural COUNT slot (spintax-js#67, where this was
+        /// born: enums and permutations resolve AFTER plurals, so a branch yielding <c>{a|b}</c>
+        /// must reach the numeric test as such and erase the block), the body of a construct
+        /// being re-read after a direct <c>%var%</c> splice (<see cref="SpliceConstruct"/>), which
+        /// needs the plugin's Stage 6a/6c around its expansion for the same reason, and
+        /// <see cref="Census"/>, which must model that same splice to count what this renders.
+        /// Iterative over spans, linear.
         /// </summary>
-        private static string ResolveCountConditionals(string text, WalkOptions opts)
+        /// <param name="takesThen">
+        /// Name and <c>inverted</c> ⇒ is the <c>then</c> branch taken. A delegate, not a
+        /// <see cref="WalkOptions"/>, so the census can answer from its own row without a second
+        /// copy of the conditional grammar living next to it.
+        /// </param>
+        internal static string ResolveConditionalsInText(string text, Func<string, bool, bool> takesThen)
         {
             if (text.IndexOf("{?", StringComparison.Ordinal) < 0) return text;
 
@@ -553,7 +605,7 @@ namespace Spintax.Core
 
                     output.Append(text, i, open - i);
                     var branchEnd = head.SepIndex < 0 ? shut : head.SepIndex;
-                    var (from, to) = ConditionalTakesThen(head.Name, head.Inverted, opts)
+                    var (from, to) = takesThen(head.Name, head.Inverted)
                         ? (head.BodyStart, branchEnd)
                         : (head.SepIndex < 0 ? shut : head.SepIndex + 1, shut);
                     // Continuation first, branch second: the stack pops the branch back out ahead
@@ -589,8 +641,15 @@ namespace Spintax.Core
         /// </summary>
         private static (string, Pending?) RenderPlural(PluralNode node, WalkOptions opts)
         {
-            var countRaw = ResolveCountConditionals(ExpandVarsOnly(node.CountRaw, opts), opts);
-            var formsRaw = ExpandVarsOnly(node.FormsRaw, opts);
+            // Both slots get the same pass arithmetic as a re-read construct (51 hops in every
+            // shape), and a form list whose passes ran out renders its pick FROZEN: a flat 50 and
+            // an unfrozen pick let a 52-deep chain in a form resolve to its end where the plugin
+            // leaves `%a52%` (reference review).
+            var passes = PassesLeft(opts);
+            var countPass = ExpandVarsFixpoint(node.CountRaw, opts, passes);
+            var formsPass = ExpandVarsFixpoint(node.FormsRaw, opts, passes);
+            var countRaw = ResolveConditionalsInText(countPass.Text, (n, inv) => ConditionalTakesThen(n, inv, opts));
+            var formsRaw = formsPass.Text;
             var baseLang = Plurals.NormalizeBaseLang(opts.Locale);
 
             if (ContainsAnyOf(formsRaw, "{}[]"))
@@ -628,6 +687,7 @@ namespace Spintax.Core
             // The picked form re-enters the pipeline (its enums/perms resolve after plurals) — as
             // a child list, so a deeply nested form does not cost a stack frame.
             var picked = Plurals.PluralFor(baseLang, ParseCount(count), forms);
+            if (!formsPass.Converged) return (RenderNodes(Parser.ParseSequence(picked), opts.AsFrozen()), null);
             return ("", Pending.Single(Parser.ParseSequence(picked)));
         }
 
@@ -685,11 +745,59 @@ namespace Spintax.Core
         }
 
         /// <summary>Pick one option (outer-first) and render it; the pick happens BEFORE the descent.</summary>
-        private static (string, Pending?) RenderEnumeration(IReadOnlyList<IReadOnlyList<Node>> options, WalkOptions opts)
+        private static (string, Pending?) RenderEnumeration(EnumerationNode node, WalkOptions opts)
         {
+            if (node.Raw != null && SpliceConstruct(node.Raw, '{', '}', opts, out var spliced)) return spliced;
+            var options = node.Options;
             if (options.Count == 0) return ("", null);
             var picked = options[RandomInt(opts.Rng, 0, options.Count - 1)];
             return ("", Pending.Single(picked));
+        }
+
+        /// <summary>
+        /// Splice the direct <c>%var%</c> references of a construct into its body as TEXT and
+        /// re-read the construct — the plugin's own order (Stage 6a conditionals → 6b expansion →
+        /// 6c conditionals) run over this one body, then the brackets go back on and the parser
+        /// reads the result. Only constructs the parser marked (<c>Raw</c>) get here; every other
+        /// one keeps the tree it was parsed into, and with it the exact RNG order the corpus pins.
+        /// </summary>
+        /// <remarks>
+        /// Why textual: <c>[&lt;…&gt;%list%]</c> with <c>%list% = a|b|c</c> is ONE option to the
+        /// parser, because the tree is built before any value exists, and
+        /// <see cref="ResolveVariable"/> hands a construct-free value back as finished text — so
+        /// the <c>|</c> that separates elements in every PHP engine was never seen here, and a
+        /// 57-name list rendered as one element (spintax-dotnet#1). Same for <c>{%list%}</c>.
+        /// <para>
+        /// Returns <c>false</c> when the body would not change — an undefined name, a reference
+        /// the budget cut off — so the caller renders the nodes it already has. That is also what
+        /// terminates the re-read: after a converged fixpoint every reference left is one
+        /// expansion cannot touch, so a re-read construct changes nothing and falls through.
+        /// </para>
+        /// <para>
+        /// Hop budget: the plugin's fixpoint is 51 passes and it runs once, over text; a construct
+        /// reached through a macro re-parse has already spent <c>Depth</c> of those hops, so it
+        /// gets <c>51 - Depth</c> passes here and the total is 51 in every shape. When the passes
+        /// run out still changing, whatever is left is FROZEN for the whole subtree: the mutual
+        /// cycle leaves <c>%b%</c>, a 51-deep chain into <c>x|y</c> reaches the body as text and
+        /// IS split — inside a bracket exactly as outside one — and nothing below earns a fresh
+        /// allowance.
+        /// </para>
+        /// </remarks>
+        private static bool SpliceConstruct(string raw, char open, char close, WalkOptions opts, out (string, Pending?) result)
+        {
+            result = ("", null);
+            if (opts.Frozen) return false;
+            Func<string, bool, bool> takesThen = (n, inv) => ConditionalTakesThen(n, inv, opts);
+            var expanded = ExpandVarsFixpoint(ResolveConditionalsInText(raw, takesThen), opts, PassesLeft(opts));
+            var body = ResolveConditionalsInText(expanded.Text, takesThen);
+            if (body == raw) return false;
+            // The brackets go back on so an unbalanced value degrades exactly as the plugin's
+            // innermost regex does: `{a}b}` is `a` followed by the literal `b}`, in both engines.
+            var nodes = Parser.ParseSequence(open + body + close);
+            result = expanded.Converged
+                ? ("", Pending.Single(nodes))
+                : (RenderNodes(nodes, opts.AsFrozen()), null);
+            return true;
         }
 
         private sealed class Element
@@ -707,6 +815,7 @@ namespace Spintax.Core
 
         private static (string, Pending?) RenderPermutation(PermutationNode node, WalkOptions opts)
         {
+            if (node.Raw != null && SpliceConstruct(node.Raw, '[', ']', opts, out var spliced)) return spliced;
             if (node.Options.Count == 0) return ("", null);
             var lists = new IReadOnlyList<Node>[node.Options.Count];
             for (var i = 0; i < lists.Length; i++) lists[i] = node.Options[i].Nodes;

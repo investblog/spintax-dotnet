@@ -71,6 +71,12 @@ Lessons carried over from `spintax-zenno` (each traces to a real incident):
   terminators, `\G` for sticky, JS `$` → `\z`, mulberry32 + FNV-1a pinned to Node outputs,
   plural counts as `double`, `#def` roll in `Object.keys` order, `JSON.stringify` escapes in
   messages.
+- **A render change is not done until `Census` makes the same change.** `Combinations` and
+  `MaxLength` describe the walk that `Render` performs, so a semantic fix to one silently makes the
+  other lie — and the corpus cannot see it, because no fixture asserts a count. The splice fix
+  (#1) shipped the renderer first and left `MaxLength` reporting 5 for a template whose longest
+  render is 7: understating a length is the half a host acts on. Change both, and pin the pair with
+  an exhaustive-enumeration test.
 
 ## Self-configuration (adapt and explain)
 

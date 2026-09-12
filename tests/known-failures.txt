@@ -1,8 +1,8 @@
 # Known-failing corpus cases — the baseline the corpus gate compares against.
 #
-# EMPTY. The whole golden corpus passes: PASS=258 FAIL=0 SKIP=0 — 254 deterministic cases
-# exact (the 10 tagged engines:["ts","py"] included) and the 4 kind:rng cases on their
-# invariants.
+# EMPTY. The whole golden corpus passes: PASS=277 FAIL=0 SKIP=0 — 273 deterministic cases
+# exact (the 10 tagged engines:["ts","py"] and the 19 splice/* cases of 2026-09-12 included)
+# and the 4 kind:rng cases on their invariants.
 #
 # It was not always empty. While the engine was built (in spintax-zenno, 2026-08-21) it listed
 # all 258 cases against an empty core and shrank step by step as the port landed; it arrived
