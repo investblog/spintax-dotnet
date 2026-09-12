@@ -13,7 +13,9 @@ project: spintax-dotnet
 - [x] Trusted Publishing policy on nuget.org (owner `investblog`, repo `spintax-dotnet`, workflow
       `release.yml`, environment `nuget`, packages `Spintax.*`) + the `NUGET_USER` variable;
       `v0.1.0` published 2026-08-23 (run 32600562685: "Your package was pushed", release on GitHub).
-- [ ] After the first package: reserve the `Spintax.*` ID prefix on NuGet.
+- [ ] Reserve the `Spintax.*` ID prefix on NuGet. Still open and still needed: the search index
+      reports `verified: false` for `Spintax.Core` as of 2026-09-12, with `0.1.0`, `0.1.1` and
+      `0.1.2` published. A manual action in the nuget.org account — nobody else can do it.
 - [x] Release `0.1.1` — the splice fix (#1: a `%var%` inside `{…}`/`[…]` is spliced as text before
       the split; corpus 277/277 on both hosts, 2026-09-12). A behaviour fix toward the family
       contract is a patch (RELEASING.md). Verified on the published package: the reported preset
