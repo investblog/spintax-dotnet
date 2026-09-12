@@ -14,6 +14,9 @@ project: spintax-dotnet
       `release.yml`, environment `nuget`, packages `Spintax.*`) + the `NUGET_USER` variable;
       `v0.1.0` published 2026-08-23 (run 32600562685: "Your package was pushed", release on GitHub).
 - [ ] After the first package: reserve the `Spintax.*` ID prefix on NuGet.
+- [x] Release `0.1.2` — the `Census` work behind the splice fix: the count follows the render's
+      depth, freeze and allowance, saturates where it cannot bound an answer, and no longer
+      advertises a guarantee it does not hold (2026-09-12, five rounds of the Codex gate).
 - [x] Release `0.1.1` — the splice fix (#1: a `%var%` inside `{…}`/`[…]` is spliced as text before
       the split; corpus 277/277 on both hosts, 2026-09-12). A behaviour fix toward the family
       contract is a patch (RELEASING.md).
