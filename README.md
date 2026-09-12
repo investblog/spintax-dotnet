@@ -133,7 +133,7 @@ PASS=277  FAIL=0  SKIP=0    # net8.0 and net472, 2026-09-12
 The port's own unit tests (`tests/Spintax.Core.Tests`, 187 on each host) pin what the corpus
 cannot express: 1-based positions, plural buckets for locales the corpus lacks, JavaScript text
 semantics (`JsText`: the JS whitespace set, the four line terminators, `String.prototype.toUpperCase`
-special casing), the exact census, and the assembly contract — two targets, zero package
+special casing), the census and where it saturates, and the assembly contract — two targets, zero package
 references, AnyCPU, no mutable static state, no `Task<T>` on the surface.
 
 ## Build and test

@@ -36,29 +36,30 @@ namespace Spintax.Core
     /// for global separators; with per-element separators the longest of them stands in for every
     /// slot, an upper bound.
     /// <para>
-    /// <b>Where the render stops expanding, so does the count.</b> The renderer's caps are
-    /// mirrored rather than approximated: the variable cap applies to variable hops only (rolling
-    /// a definition is not one), and a fixpoint that ran out of passes freezes its subtree — a
-    /// reference left over is then literal text, and counts as the length of <c>%name%</c>.
+    /// Two of the renderer's caps ARE mirrored: the variable cap applies to variable hops only
+    /// (rolling a definition is not one), and a fixpoint that ran out of passes freezes its
+    /// subtree — a reference left over is then literal text, and counts as the length of
+    /// <c>%name%</c>.
     /// </para>
     /// <para>
     /// <b>Where this walk cannot bound an answer it SATURATES</b> at <see cref="long.MaxValue"/>
-    /// rather than report a number built on a sub-tree it abandoned: the expansion allowance —
-    /// charged here at every substitution the renderer charges — running out anywhere, or the
-    /// structural backstop being reached. That also ends a doubling macro, which used to walk
-    /// 2^50 nodes and kill the process.
+    /// rather than report a number built on a sub-tree it abandoned: the expansion allowance
+    /// running out anywhere, or the structural backstop being reached. That also ends a doubling
+    /// macro, which used to walk 2^50 nodes and kill the process.
     /// </para>
     /// <para>
     /// It is <b>not</b> a proof of an upper bound, and must not be documented as one. This is a
-    /// static walk of a tree describing a dynamic engine, and the two part company wherever the
-    /// render stops expanding: an unexpanded reference emits <c>%name%</c>, which can be LONGER
-    /// than the value it replaced, and mutually exclusive branches each deserve the allowance the
-    /// other spent. The gaps that remain are measured and listed in <c>docs/TODO.md</c> — a
-    /// <c>#def</c> cycle's length, a construct-bearing <c>#def</c> spliced into a construct,
-    /// <c>#include</c>d children (which these entry points never see: they take no resolver), and
-    /// directive-backed variables in a plural slot or a conditional test. For any template that
-    /// stays inside the allowance and uses none of those, the answers are exact — which is every
-    /// ordinary one, and what the tests pin.
+    /// static walk of a tree describing a dynamic engine; they part company wherever the render
+    /// stops expanding — an unexpanded reference emits <c>%name%</c>, which can be LONGER than the
+    /// value it replaced, and mutually exclusive branches each deserve the allowance the other
+    /// spent — and at several places inside the allowance too. The allowance is charged at most of
+    /// the substitutions the renderer charges, not provably all of them. Every known gap is
+    /// measured and listed in <c>docs/TODO.md</c>: a <c>#def</c> cycle's length, a
+    /// construct-bearing <c>#def</c> spliced into a construct, <c>#include</c>d children (which
+    /// these entry points never see — they take no resolver), directive-backed variables in a
+    /// plural slot or a conditional test, and the per-element separator approximation above. A
+    /// template that uses none of them and stays inside the allowance is counted exactly, which is
+    /// every ordinary one and what the tests pin.
     /// </para>
     /// </remarks>
     internal static class Census
@@ -428,7 +429,11 @@ namespace Spintax.Core
                 public bool Converged;
             }
 
-            /// <summary>Truthy exactly as the renderer: set, and has a non-whitespace char.</summary>
+            /// <summary>
+            /// Set, and has a non-whitespace char — the renderer's <c>is_truthy</c>. It reads the
+            /// ROW only, while the renderer tests against the merged map, so a <c>#set</c> or a
+            /// rolled <c>#def</c> that decides a branch is invisible here (<c>docs/TODO.md</c>).
+            /// </summary>
             private bool TakesThen(string name, bool inverted)
             {
                 var truthy = _lowerVars.TryGetValue(name.ToLowerInvariant(), out var value) && HasNonWhitespace(value);
@@ -451,8 +456,10 @@ namespace Spintax.Core
                 }
                 if (_ast.DefDefs.ContainsKey(name))
                 {
-                    // The renderer substitutes the ROLLED text here and charges it; the roll is
-                    // never longer than DefLength, so charging that keeps this walk a superset.
+                    // The renderer substitutes the ROLLED text here and charges it, so charge the
+                    // length this walk measured for it. That is the roll's length for a definition
+                    // this walk can measure; a CYCLE is memoised to zero and charges nothing, which
+                    // is one of the listed gaps (docs/TODO.md), not a bound.
                     var rolled = DefLength(name);
                     if (!Charge(rolled)) return Literal(rawName);
                     return (Poly.Ref(name), rolled);

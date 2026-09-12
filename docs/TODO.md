@@ -26,13 +26,15 @@ project: spintax-dotnet
 - Per-element permutation separators make `MaxLength` an upper bound (documented in `Census`).
 - `Combinations` counts choice paths: `{a|a}` is 2. Documented; a distinct-text count would need
   output collisions, which the family does not define.
+
 ### Census: the gaps that remain between a static count and the engine
 
 Five rounds of the Codex gate (2026-09-12) established that "the count never understates" is not a
 property this walk can hold by patching — it is a static tree walk describing a dynamic engine, and
-they part company wherever the render stops expanding. The walk now SATURATES where it cannot bound
-an answer, and the contract is documented as a count, not a proof. These are the known gaps, each
-measured; closing any of them is a design change, not a fix.
+they part company wherever the render stops expanding AND at several points inside the allowance.
+The walk now SATURATES where it cannot bound an answer, and the contract is documented as a count,
+not a proof. These are the known gaps, each measured; closing any of them is a design change, not a
+fix. The per-element separator approximation above is a sixth, older one.
 
 - **A `#def` whose value carries a construct, spliced into a construct.** A construct-free
   definition splices correctly — rolled once and held, so its text is known statically — but one
