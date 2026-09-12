@@ -14,12 +14,21 @@ project: spintax-dotnet
       `release.yml`, environment `nuget`, packages `Spintax.*`) + the `NUGET_USER` variable;
       `v0.1.0` published 2026-08-23 (run 32600562685: "Your package was pushed", release on GitHub).
 - [ ] After the first package: reserve the `Spintax.*` ID prefix on NuGet.
+- [x] Release `0.1.1` — the splice fix (#1: a `%var%` inside `{…}`/`[…]` is spliced as text before
+      the split; corpus 277/277 on both hosts, 2026-09-12). A behaviour fix toward the family
+      contract is a patch (RELEASING.md). Verified on the published package: the reported preset
+      over eight names renders `Amigo, BTG, Belatra, Apparat, 3 Oaks and Amusnet`, no raw pipe.
 - [x] Release `0.1.2` — the `Census` work behind the splice fix: the count follows the render's
       depth, freeze and allowance, saturates where it cannot bound an answer, and no longer
       advertises a guarantee it does not hold (2026-09-12, five rounds of the Codex gate).
-- [x] Release `0.1.1` — the splice fix (#1: a `%var%` inside `{…}`/`[…]` is spliced as text before
-      the split; corpus 277/277 on both hosts, 2026-09-12). A behaviour fix toward the family
-      contract is a patch (RELEASING.md).
+- [ ] **Ask `spintax-js` about the two family-level splice gaps** — a `%var%` in `minsize=` /
+      `maxsize=`, and a `{?…}` branch carrying a `|` with no reference beside it. Both match
+      `@spintax/core` 0.7.0 exactly and no corpus case pins either, so the answer belongs upstream
+      and then in the corpus; do not change .NET alone. Not filed yet (2026-09-12).
+- [ ] **Check `spintax-zenno` against the splice.** Its `Lint` adds each raw variable VALUE to the
+      ignore list so data is not flagged as writing; a spliced list no longer appears verbatim in
+      the render, so brand names from data may now be reported as findings. Raised by review here,
+      never verified there — it is a sibling repo consuming this engine from a checkout.
 
 ## Debts
 
