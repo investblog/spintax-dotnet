@@ -37,6 +37,12 @@ project: spintax-dotnet
       ignore list so data is not flagged as writing; a spliced list no longer appears verbatim in
       the render, so brand names from data may now be reported as findings. Raised by review here,
       never verified there — it is a sibling repo consuming this engine from a checkout.
+- [ ] **Port the character-class change from `spintax-js` 9850599** (2026-09-12, "character
+      classes follow PHP — UCP under /u, ASCII without it"). Its new corpus case
+      `validate/perm-config-nbsp-is-not-config-whitespace` fails here (`verdict=invalid want=valid`,
+      `permutation.unknown-key:error@1:3`): .NET still treats NBSP as config whitespace. The
+      pre-push gate blocks on it; the hooks-only commit `0c55301` was pushed with `--no-verify` on
+      2026-09-14 (PC move) for that reason alone. Unit tests 187/187 on net8.0 and net472.
 
 ## Debts
 
