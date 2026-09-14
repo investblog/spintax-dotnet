@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.agents/hooks/bash.cmd\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/secrets-guard/guard.sh\" --claude"
+            "command": "git -c \"alias.agent-hook=!bash .agents/hooks/secrets-guard/guard.sh\" agent-hook --claude; exit $LASTEXITCODE"
           }
         ]
       }
@@ -17,11 +17,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.agents/hooks/bash.cmd\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/light-lint/lint.sh\""
+            "command": "git -c \"alias.agent-hook=!bash .agents/hooks/light-lint/lint.sh\" agent-hook; exit $LASTEXITCODE"
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.agents/hooks/bash.cmd\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/docs-frontmatter/check.sh\""
+            "command": "git -c \"alias.agent-hook=!bash .agents/hooks/docs-frontmatter/check.sh\" agent-hook; exit $LASTEXITCODE"
           }
         ]
       }

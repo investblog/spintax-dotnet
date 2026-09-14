@@ -3,6 +3,22 @@
 WHY something was attached or changed. The WHAT graph lives in `map.yaml`; do not duplicate it
 here.
 
+## 2026-09-14 — хуки запускаются переносимо, без абсолютного пути к bash
+
+Команды хуков в `.claude/settings.json`, `.codex/config.toml` и фрагментах `.agents/hooks/*/{claude.json,codex.toml}`
+переписаны на единый запуск:
+`git -c "alias.agent-hook=!bash .agents/hooks/<hook>/<script>.sh" agent-hook [--claude|--codex]; exit $LASTEXITCODE`.
+
+Почему. Прежние формы ломались на Windows: абсолютный `W:\Program Files\Git\bin\bash.exe` не существует на другом ПК,
+а голый `bash` из PowerShell попадает в WSL-лаунчер. Claude Code (когда Git стоит не в стандартном месте) и Codex
+запускают хуки через PowerShell. Проверено: `!`-алиас git исполняется собственным sh Git-а (bash = Git Bash), из корня
+репозитория; stdin/stdout/stderr и код выхода проходят. `; exit $LASTEXITCODE` нужен, потому что `powershell -Command`
+превращает exit 2 в 1, а для Claude это неблокирующая ошибка: **secrets-guard на этом ПК молча пропускал `.env`**
+(красный тест на старом конфиге, зелёный на новом — Claude в режимах PowerShell и Git Bash, Codex). В sh переменная
+пуста — обычный `exit` с кодом git. Требование: проект — git-репозиторий, `git` в PATH.
+
+Заменяет `.agents/hooks/bash.cmd` (только Windows) из записи ниже; файл удалён.
+
 ## 2026-08-22 — bootstrap by extraction
 
 This repository is the engine carved out of `spintax-zenno` (commit `c20722f`), where it was

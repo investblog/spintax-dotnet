@@ -5,5 +5,5 @@ matcher = "apply_patch"
 
 [[hooks.PostToolUse.hooks]]
 type = "command"
-command = 'bash ".agents/hooks/docs-frontmatter/check.sh"'
+command = 'git -c "alias.agent-hook=!bash .agents/hooks/docs-frontmatter/check.sh" agent-hook; exit $LASTEXITCODE'
 statusMessage = "docs-frontmatter"
