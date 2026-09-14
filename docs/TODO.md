@@ -43,6 +43,12 @@ project: spintax-dotnet
       `permutation.unknown-key:error@1:3`): .NET still treats NBSP as config whitespace. The
       pre-push gate blocks on it; the hooks-only commit `0c55301` was pushed with `--no-verify` on
       2026-09-14 (PC move) for that reason alone. Unit tests 187/187 on net8.0 and net472.
+      **CI is wider than the local gate:** the push run for `eed1271` (2026-09-14) is red with 36
+      failing corpus cases — `render-postprocess` 18 (e.g. `ru-multidot-abbreviation`: `т.д.` →
+      `т. Д.`; `idn-domain-cyrillic`: `пример.рф` → `пример. Рф`), `render-semantics` 16, `validate` 2
+      — while the local gate on Windows, against a `spintax-js` checkout at the same `origin/main`,
+      reported only the NBSP case. Last green CI: `c2c4398`, 2026-09-12. Why local and CI differ is
+      NOT established (runner OS/culture? corpus ref?) — check that before porting.
 
 ## Debts
 
