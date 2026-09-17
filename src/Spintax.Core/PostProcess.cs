@@ -42,8 +42,31 @@ namespace Spintax.Core
         private const string AfterNonWord = CharClass.UcpAfterNonWord;
         private const string B = CharClass.UcpWordBoundary;
 
-        private const string DomainPart =
-            @"(?:(?:(?:xn--)?[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*)\.)+(?:xn--[a-z0-9\-]{2,59}|[\p{L}][\p{L}\p{N}-]{1,62})";
+        // A punycode label as the plugin reads `xn--` under `i`: either case, and the two non-ASCII
+        // letters that fold into `[a-z]` — U+017F LONG S and U+212A KELVIN SIGN. Spelled out,
+        // because the domain patterns below carry no `i`.
+        private const string Xn = "[xX][nN]--";
+        private const string Label = "(?:" + Xn + @")?[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*";
+
+        // A TLD is a label in ONE case: `example.com` and `ASP.NET` are domains, `compact.Game` is
+        // a sentence glued to the next one, and so is `конец.Начало` (spintax-js#79). Letters
+        // without case (\p{Lo}, \p{Lm} — CJK, Arabic, Thai) fit either reading, so `例子.中国` stays
+        // a domain. The accepted cost, pinned by the corpus: `Yandex.Money` renders
+        // `Yandex. Money`, and `info@example.Com` is no longer shielded as an email.
+        //
+        // PHP writes the one-case alternative under `(?-i:…)`. .NET has inline modifiers, but not
+        // the case-folding to go with them: `RegexOptions.IgnoreCase` folds by an equivalence table
+        // on net8 and by lower-casing the input character on net472, and the two differ on exactly
+        // U+017F and U+212A. So the domain patterns carry no `i` on either host and spell out the
+        // one part that is case-insensitive — the punycode form.
+        private const string TldLower = @"\p{Ll}\p{Lm}\p{Lo}";
+        private const string TldUpper = @"\p{Lu}\p{Lt}\p{Lm}\p{Lo}";
+        private const string Tld =
+            "(?:" + Xn + "[a-zA-Z0-9\\-\\u017F\\u212A]{2,59}"
+            + "|[" + TldLower + "][" + TldLower + @"\p{N}-]{1,62}"
+            + "|[" + TldUpper + "][" + TldUpper + @"\p{N}-]{1,62})";
+
+        private const string DomainPart = "(?:" + Label + @"\.)+" + Tld;
 
         // URIs — https?/ftp (with an authority) and mailto:/tel: (without one) — in ONE pass, so
         // an overlapping pair is never split (spintax-js#53). `\0` stays out of the body class.
@@ -53,8 +76,12 @@ namespace Spintax.Core
 
         private static readonly Regex UriRe = new Regex(@"(?:(?:https?|ftp):\/\/|(?:mailto|tel):)" + UriBody + "+", Ci);
         private static readonly Regex MailTelPrefixRe = new Regex(@"^(?:mailto|tel):", Ci);
-        private static readonly Regex EmailRe = new Regex(@"[a-z0-9._%+\-]+@" + DomainPart + B, Ci);
-        private static readonly Regex DomainRe = new Regex(AfterNonWord + DomainPart + B, Ci);
+        // `[a-z0-9._%+-]` as the plugin's pattern reads it under `iu`: both cases, and the two
+        // non-ASCII letters that fold into the class. No `i` here either — see Tld above.
+        private const string EmailLocal = "[a-zA-Z0-9._%+\\-\\u017F\\u212A]";
+
+        private static readonly Regex EmailRe = new Regex(EmailLocal + "+@" + DomainPart + B);
+        private static readonly Regex DomainRe = new Regex(AfterNonWord + DomainPart + B);
         // PHP's decimal shield is the one pattern here without /u: byte mode, so its `\b` and `\d`
         // are ASCII. Deliberately not widened with the rest.
         private static readonly Regex DecimalRe =
@@ -85,10 +112,12 @@ namespace Spintax.Core
         private static readonly Regex SpaceAfterOpenerRe = new Regex("([" + SentenceOpeners + "])" + S + "+");
         private static readonly Regex CapFirstRe = new Regex("^(" + Lead + @")(\p{Ll})");
         private static readonly Regex CapAfterSentenceRe = new Regex("([.!?…])(" + Lead + @")(\p{Ll})");
-        // The reference's `i` flag reaches its `\p{Ll}` too: under JS `iu` the class also takes
-        // an uppercase letter (upper-casing it is the identity) and a TITLECASE one (ǅ → Ǆ).
-        // Scoping `i` to the tag names and adding \p{Lt} reproduces both observable effects.
-        private static readonly Regex CapAfterBlockRe = new Regex(@"(<\/?(?i:p|h[1-6]|li|blockquote|div|td|th)[^>]*>" + Lead + @")([\p{Ll}\p{Lt}])");
+        // PHP writes this capitalizer `/ui`, but PCRE2 does not fold a Unicode property, so its
+        // `\p{Ll}` is still lower case only — only the tag NAME is caseless. JavaScript's `\p{Ll}`
+        // under `i` takes every cased letter, and reading it that way turned a titlecase `ǅ` after
+        // `<p>` into `Ǆ` where PHP keeps it (spintax-js#79). Scoping `i` to the tag names is the
+        // whole of it; the `\p{Lt}` this class once carried reproduced the reference's own bug.
+        private static readonly Regex CapAfterBlockRe = new Regex(@"(<\/?(?i:p|h[1-6]|li|blockquote|div|td|th)[^>]*>" + Lead + @")(\p{Ll})");
         private static readonly Regex CapAfterBreakRe = new Regex("(\n" + Lead + @")(\p{Ll})");
 
         // The shield's placeholder prefixes; RestoreRe is built from the same list so a new
