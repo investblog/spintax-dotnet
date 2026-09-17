@@ -12,11 +12,13 @@ namespace Spintax.Core
     /// </summary>
     /// <remarks>
     /// Every regex is the reference's, rewritten for the .NET dialect where the two disagree
-    /// (<c>docs/TODO.md</c>, "Правила порта"): JS <c>\b</c> is ASCII-word based → spelled out
-    /// as <see cref="B"/>; JS <c>\d</c> → <c>[0-9]</c>; JS <c>$</c> (no <c>m</c> flag) → <c>\z</c>,
-    /// because .NET's <c>$</c> also matches before a final newline; JS <c>trim()</c> and
-    /// <c>toUpperCase()</c> → <see cref="JsText"/>. Whitespace classes were already explicit
-    /// ASCII in the reference. Static <c>Regex</c> instances are immutable and thread-safe.
+    /// (<c>docs/TODO.md</c>, "Правила порта"): no shorthand class is written, because PHP's
+    /// <c>/u</c> makes them Unicode and .NET's are a third set again — they come from
+    /// <see cref="CharClass"/>, UCP everywhere but the decimal shield, which PHP writes without
+    /// <c>/u</c>; JS <c>$</c> (no <c>m</c> flag) → <c>\z</c>, because .NET's <c>$</c> also matches
+    /// before a final newline; JS <c>trim()</c> and <c>toUpperCase()</c> → <see cref="JsText"/>,
+    /// which stay JS semantics: the final trim of this stage is JavaScript's.
+    /// Static <c>Regex</c> instances are immutable and thread-safe.
     /// </remarks>
     internal static class PostProcessor
     {
@@ -27,13 +29,18 @@ namespace Spintax.Core
             "стр|табл|рис|мин|макс|тел|факс|" +
             "etc|vs|Mr|Mrs|Ms|Dr|Prof|Sr|Jr|Inc|Ltd|Co|Corp|No|St|Ave|Blvd";
 
-        // ASCII whitespace only — the reference spells it out because no dialect's `\s` is this set.
-        private const string Ws = @" \t\r\n\f\x0B";
-        private const string S = "[" + Ws + "]";
+        // Every pattern of this stage carries /u in PHP — the decimal shield alone does not — and
+        // /u is PCRE2_UCP: `\s` takes NBSP and the rest of \p{Z}, `\b` and `\d` see every script.
+        // So the classes are UCP, spelled out (CharClass); this block once said the opposite, and
+        // Cyrillic abbreviations, IDN domains and NBSP were mangled here while PHP rendered them
+        // intact (spintax-js#81).
+        private const string Ws = CharClass.UcpSpaceChars;
+        private const string S = CharClass.UcpSpace;
 
-        // JS `\b`: a boundary between [A-Za-z0-9_] and anything else (start/end included).
-        // .NET's `\b` would use Unicode \w and see a boundary next to a Cyrillic letter.
-        private const string B = @"(?:(?<![A-Za-z0-9_])(?=[A-Za-z0-9_])|(?<=[A-Za-z0-9_])(?![A-Za-z0-9_]))";
+        // A leading `\b` in front of a pattern that begins with a word character, and `\b` in
+        // general — both UCP, so a Cyrillic letter is a word character here as it is in PHP.
+        private const string AfterNonWord = CharClass.UcpAfterNonWord;
+        private const string B = CharClass.UcpWordBoundary;
 
         private const string DomainPart =
             @"(?:(?:(?:xn--)?[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*)\.)+(?:xn--[a-z0-9\-]{2,59}|[\p{L}][\p{L}\p{N}-]{1,62})";
@@ -47,9 +54,12 @@ namespace Spintax.Core
         private static readonly Regex UriRe = new Regex(@"(?:(?:https?|ftp):\/\/|(?:mailto|tel):)" + UriBody + "+", Ci);
         private static readonly Regex MailTelPrefixRe = new Regex(@"^(?:mailto|tel):", Ci);
         private static readonly Regex EmailRe = new Regex(@"[a-z0-9._%+\-]+@" + DomainPart + B, Ci);
-        private static readonly Regex DomainRe = new Regex(B + DomainPart + B, Ci);
-        private static readonly Regex DecimalRe = new Regex(B + @"[0-9]+\.[0-9]+" + B);
-        private static readonly Regex MultiAbbrRe = new Regex(B + @"(?:\p{L}{1,2}\." + S + "*){2,}");
+        private static readonly Regex DomainRe = new Regex(AfterNonWord + DomainPart + B, Ci);
+        // PHP's decimal shield is the one pattern here without /u: byte mode, so its `\b` and `\d`
+        // are ASCII. Deliberately not widened with the rest.
+        private static readonly Regex DecimalRe =
+            new Regex(CharClass.AsciiWordBoundary + @"[0-9]+\.[0-9]+" + CharClass.AsciiWordBoundary);
+        private static readonly Regex MultiAbbrRe = new Regex(AfterNonWord + @"(?:\p{L}{1,2}\." + S + "*){2,}");
         private static readonly Regex SingleAbbrRe = new Regex(@"(?<![\p{L}\p{N}])(?:" + SingleAbbrevs + @")\.(?=" + S + @"|\z|<)", Ci);
         private static readonly Regex TrailingPunctRe = new Regex(@"([.,;:!]+)\z");
 
@@ -60,10 +70,17 @@ namespace Spintax.Core
         private const string Lead = "(?:<[^>]+>|[" + SentenceOpeners + "]|" + S + ")*";
 
         private static readonly Regex CollapseSpacesRe = new Regex("[ \t]{2,}");
-        private static readonly Regex SpaceBeforePunctRe = new Regex(S + "+([,;:!?.])");
-        private static readonly Regex SpaceAfterCommaRe = new Regex("([,;:])(?![0-9])(?!" + S + @"|\z|<)");
-        // A run of sentence punctuation is ONE sentence end; `(?![.!?])` completes the run.
-        private static readonly Regex SpaceAfterSentenceRe = new Regex("([.!?]+)(?![.!?])(?![0-9])(?!" + S + @"|\z|<)");
+        // A match may start only where a whitespace run starts (`(?<!S)`): every start inside a run
+        // reaches the same end, so the same matches — but a run NOT followed by punctuation is
+        // scanned once instead of once per character, and the UCP class above gave NBSP and U+3000
+        // runs the same shape (spintax-js#80).
+        private static readonly Regex SpaceBeforePunctRe = new Regex("(?<!" + S + ")" + S + "+([,;:!?.])");
+        // The digit is PHP's UCP `\d` — any decimal digit, not just ASCII.
+        private static readonly Regex SpaceAfterCommaRe = new Regex(@"([,;:])(?!\p{Nd})(?!" + S + @"|\z|<)");
+        // A run of sentence punctuation is ONE sentence end; `(?![.!?])` completes the run, and
+        // `(?<![.!?])` starts the match only where the run starts, for the same reason as above.
+        private static readonly Regex SpaceAfterSentenceRe =
+            new Regex(@"(?<![.!?])([.!?]+)(?![.!?])(?!\p{Nd})(?!" + S + @"|\z|<)");
         // An opener binds to the word it opens. MUST run before capitalisation.
         private static readonly Regex SpaceAfterOpenerRe = new Regex("([" + SentenceOpeners + "])" + S + "+");
         private static readonly Regex CapFirstRe = new Regex("^(" + Lead + @")(\p{Ll})");

@@ -53,10 +53,16 @@ namespace Spintax.Core.Tests
         public void Shielding(string input, string expected) => Assert.Equal(expected, PP(input));
 
         [Fact]
-        public void A_Cyrillic_multi_dot_abbreviation_is_NOT_shielded_in_any_engine()
+        public void A_Cyrillic_multi_dot_abbreviation_IS_shielded()
         {
-            // Multi-dot uses JS `\b`, which is ASCII — so т.д. is mangled, and parity holds.
-            Assert.NotEqual("и т.д. далее", PP("и т.д. далее"));
+            // The multi-dot shield is PHP's `\b` under /u — UCP, so a Cyrillic letter is a word
+            // character and `т.д.` is an abbreviation here exactly as it is in PHP (spintax-js#81).
+            // This test asserted the opposite until then, and its `NotEqual` passed on the capital
+            // И alone — which is how the ASCII premise stayed green for two months upstream.
+            Assert.Equal("И т.д. далее", PP("и т.д. далее"));
+            // A word character before it is no boundary, so there the shield does not fire: `_` is
+            // a UCP word character (\p{Pc}), and so is the `d` of "world" below.
+            Assert.Equal("X _т. Д. Y", PP("X _т.д. y"));
         }
 
         [Fact]
@@ -87,7 +93,10 @@ namespace Spintax.Core.Tests
             const string src = "https://a.io e.g. URL_0mailto:x@y.io";
             Assert.Equal(src, PP(src));
             Assert.DoesNotContain(NulChar, PP(src));
-            Assert.Equal("Hello worldт.д.URL_0http://x.io/p?q=1", PP("hello worldт.д.URL_0http://x.io/p?q=1"));
+            // `т.д.` glued to a Latin word is not shielded — the `d` before it is a UCP word
+            // character, so there is no boundary (spintax-js#81); the reference engine 0.9.0
+            // renders this byte for byte.
+            Assert.Equal("Hello worldт. Д. URL_0http://x.io/p?q=1", PP("hello worldт.д.URL_0http://x.io/p?q=1"));
         }
 
         [Theory]

@@ -432,15 +432,21 @@ namespace Spintax.Core
         // ── permutation config + per-element separators ──────────────────────────────────
 
         private const RegexOptions Ci = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
-        private const string B = @"(?:(?<![A-Za-z0-9_])(?=[A-Za-z0-9_])|(?<=[A-Za-z0-9_])(?![A-Za-z0-9_]))";
+        private const string B = CharClass.AsciiWordBoundary;
 
-        private static readonly Regex ConfigKeyRe = new Regex(B + "(?:minsize|maxsize|sep|lastsep)" + JsText.S + "*=", Ci);
-        private static readonly Regex MinSizeRe = new Regex("minsize" + JsText.S + "*=" + JsText.S + "*([0-9]+)", Ci);
-        private static readonly Regex MaxSizeRe = new Regex("maxsize" + JsText.S + "*=" + JsText.S + "*([0-9]+)", Ci);
-        private static readonly Regex SepRe = new Regex("(?<!last)sep" + JsText.S + "*=" + JsText.S + "*\"([^\"]*)\"", Ci);
-        private static readonly Regex LastSepRe = new Regex("lastsep" + JsText.S + "*=" + JsText.S + "*\"([^\"]*)\"", Ci);
-        private static readonly Regex HtmlTagRe = new Regex("^([a-zA-Z][a-zA-Z0-9-]*)(?:" + JsText.S + @"+[^>]*)?\/?\z");
-        private static readonly Regex PerElemHtmlRe = new Regex("^[a-zA-Z][a-zA-Z0-9]*" + JsText.S);
+        // PHP writes the permutation-config patterns WITHOUT `/u` — byte mode, so their whitespace
+        // is ASCII, where JavaScript's `\s` is Unicode on any flags and .NET's is Unicode too. The
+        // class is spelled out, or `minsize<NBSP>=2` is a size here and one separator in PHP
+        // (spintax-js#81).
+        private const string Cs = CharClass.AsciiSpace;
+
+        private static readonly Regex ConfigKeyRe = new Regex(B + "(?:minsize|maxsize|sep|lastsep)" + Cs + "*=", Ci);
+        private static readonly Regex MinSizeRe = new Regex("minsize" + Cs + "*=" + Cs + "*([0-9]+)", Ci);
+        private static readonly Regex MaxSizeRe = new Regex("maxsize" + Cs + "*=" + Cs + "*([0-9]+)", Ci);
+        private static readonly Regex SepRe = new Regex("(?<!last)sep" + Cs + "*=" + Cs + "*\"([^\"]*)\"", Ci);
+        private static readonly Regex LastSepRe = new Regex("lastsep" + Cs + "*=" + Cs + "*\"([^\"]*)\"", Ci);
+        private static readonly Regex HtmlTagRe = new Regex("^([a-zA-Z][a-zA-Z0-9-]*)(?:" + Cs + @"+[^>]*)?\/?\z");
+        private static readonly Regex PerElemHtmlRe = new Regex("^[a-zA-Z][a-zA-Z0-9]*" + Cs);
 
         private static PermConfig DefaultPermConfig() => new PermConfig(null, null, " ", null);
 
@@ -495,7 +501,7 @@ namespace Spintax.Core
             if (!m.Success) return false;
             if (trimmed.EndsWith("/", StringComparison.Ordinal)) return true; // self-closing
             var tagName = m.Groups[1].Value.ToLowerInvariant();
-            return Regex.IsMatch(remaining, "</" + Regex.Escape(tagName) + JsText.S + "*>", Ci);
+            return Regex.IsMatch(remaining, "</" + Regex.Escape(tagName) + Cs + "*>", Ci);
         }
 
         /// <summary>

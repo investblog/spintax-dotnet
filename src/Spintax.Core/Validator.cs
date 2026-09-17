@@ -25,10 +25,16 @@ namespace Spintax.Core
             JsText.LineStart + @"[ \t]*#include[ \t\n\r\f\x0B]+""([^""]+)""[ \t\n\r\f\x0B]*" + JsText.LineEnd);
         private static readonly Regex IncludeWordRe = new Regex("#include" + B);
         private static readonly Regex ConfigPrefixRe = new Regex(@"\[<([^>]*?)>");
-        private static readonly Regex AnyKeyEqualsRe = new Regex(Word + "+" + JsText.S + "*=");
-        private static readonly Regex KeyEqualsRe = new Regex("(" + Word + "+)" + JsText.S + "*=");
-        private static readonly Regex MinSizeRe = new Regex("minsize" + JsText.S + "*=" + JsText.S + "*([^;>" + JsText.SChars + "]+)", Ci);
-        private static readonly Regex MaxSizeRe = new Regex("maxsize" + JsText.S + "*=" + JsText.S + "*([^;>" + JsText.SChars + "]+)", Ci);
+        // The config patterns are PHP's without `/u` — byte mode, so ASCII whitespace, like the
+        // parser's (spintax-js#81). `[<foo<NBSP>=1>a|b]` is valid because the no-break space makes
+        // it no key at all, and `[<minsize=2<NBSP>>a|b]` is `permutation.minsize-not-integer`
+        // because the space is part of the value.
+        private const string Cs = CharClass.AsciiSpace;
+
+        private static readonly Regex AnyKeyEqualsRe = new Regex(Word + "+" + Cs + "*=");
+        private static readonly Regex KeyEqualsRe = new Regex("(" + Word + "+)" + Cs + "*=");
+        private static readonly Regex MinSizeRe = new Regex("minsize" + Cs + "*=" + Cs + "*([^;>" + CharClass.AsciiSpaceChars + "]+)", Ci);
+        private static readonly Regex MaxSizeRe = new Regex("maxsize" + Cs + "*=" + Cs + "*([^;>" + CharClass.AsciiSpaceChars + "]+)", Ci);
         private static readonly Regex DigitsRe = new Regex(@"^[0-9]+\z");
         // Spintax still unresolved when plural agreement runs: `[`, or `{` that does not open a
         // conditional — conditionals resolve BEFORE plurals, enumerations and permutations after.

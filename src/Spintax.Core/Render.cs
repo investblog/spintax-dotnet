@@ -541,7 +541,12 @@ namespace Spintax.Core
             return new Fixpoint { Text = output, Converged = false };
         }
 
-        /// <summary>Truthy = the raw var value is set and has a non-whitespace char (plugin <c>is_truthy</c>; JS <c>\S</c>).</summary>
+        /// <summary>
+        /// Truthy = the raw var value is set and has a non-whitespace char — the plugin's
+        /// <c>is_truthy</c>, whose <c>/\S/u</c> is PCRE2's class (spintax-js#81): U+FEFF alone is
+        /// truthy, U+0085 alone is blank. Not JavaScript's <c>\s</c>, which says the opposite of
+        /// both.
+        /// </summary>
         private static bool ConditionalTakesThen(string name, bool inverted, WalkOptions opts)
         {
             var truthy = opts.Vars.TryGetValue(name.ToLowerInvariant(), out var value) && HasNonWhitespace(value);
@@ -551,7 +556,7 @@ namespace Spintax.Core
         private static bool HasNonWhitespace(string s)
         {
             foreach (var ch in s)
-                if (!JsText.IsJsWhiteSpace(ch)) return true;
+                if (!CharClass.IsUcpSpace(ch)) return true;
             return false;
         }
 

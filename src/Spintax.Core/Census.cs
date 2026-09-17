@@ -728,10 +728,11 @@ namespace Spintax.Core
                 return trimmed.Length + 2; // the renderer pads a purely alphabetic separator
             }
 
+            /// <summary>The renderer's truthiness test, character for character (<see cref="CharClass.IsUcpSpace"/>).</summary>
             private static bool HasNonWhitespace(string s)
             {
                 foreach (var ch in s)
-                    if (!JsText.IsJsWhiteSpace(ch)) return true;
+                    if (!CharClass.IsUcpSpace(ch)) return true;
                 return false;
             }
         }
