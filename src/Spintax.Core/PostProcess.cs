@@ -78,10 +78,6 @@ namespace Spintax.Core
 
         private static readonly Regex UriRe = new Regex(@"(?:(?:https?|ftp):\/\/|(?:mailto|tel):)" + UriBody + "+", Ci);
         private static readonly Regex MailTelPrefixRe = new Regex(@"^(?:mailto|tel):", Ci);
-        // `[a-z0-9._%+-]` as the plugin's pattern reads it under `iu`: both cases, and the two
-        // non-ASCII letters that fold into the class. No `i` here either — see Tld above.
-        private const string EmailLocal = "[a-zA-Z0-9._%+\\-\\u017F\\u212A]";
-
         // The email and bare-domain shields are the plugin's patterns — `[a-z0-9._%+\-]+@DOMAIN\b`
         // and `\bDOMAIN\b` — run by a SCANNER instead of a global replace, because the replace
         // retries from every start inside a long run: one 131 000-letter word, and a dotted run
@@ -348,7 +344,7 @@ namespace Spintax.Core
         private static bool IsEmailLocalChar(char ch) =>
             (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
             || ch == '.' || ch == '_' || ch == '%' || ch == '+' || ch == '-'
-            || ch == 'ſ' || ch == 'K';
+            || ch == '\x017F' || ch == '\x212A';
 
         /// <summary>The email shield, as a scanner over the <c>@</c>s — see <see cref="DomainAtRe"/>.</summary>
         private static string ShieldEmails(string text, Func<string, string> shield)

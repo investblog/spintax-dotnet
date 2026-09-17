@@ -152,6 +152,17 @@ namespace Spintax.Core.Tests
         }
 
         [Fact]
+        public void An_optional_item_whose_text_comes_from_the_row_is_counted_from_the_re_read()
+        {
+            // `{%v%|}` is marked for the re-read, so the count of the element comes from the body
+            // the splice gave it — and so must the question of which of its ways are blank, or the
+            // walk says 12 where the engine draws 8.
+            var row = Row(("v", "x"));
+            Assert.Equal(8, Engine.Combinations("[a|{%v%|}|c]", row));
+            Assert.Equal(5, Engine.MaxLength("[a|{%v%|}|c]", row)); // "a x c"
+        }
+
+        [Fact]
         public void A_dropped_element_narrows_the_size_range_the_count_uses()
         {
             // Nine paths while {b|} draws b — three singles and six ordered pairs — and four more

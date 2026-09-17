@@ -63,7 +63,7 @@ namespace Spintax.Core.Tests
         [InlineData("end. <p>x</p>", "End. <p>X</p>")]
         [InlineData("<p><p><p><p>x</p>", "<p><p><p><p>X</p>")]
         [InlineData("one.                                        two", "One. Two")] // a lead past the 32-step walk
-        [InlineData("end.  next", "End.  Next")]                // NBSP is lead whitespace
+        [InlineData("end.\x00A0\x00A0next", "End.\x00A0\x00A0Next")]                // NBSP is lead whitespace
         [InlineData("wow!!! really", "Wow!!! Really")]
         [InlineData("¡¿qué haces?! sí", "¡¿Qué haces?! Sí")]
         [InlineData("<p>¿<a href=\"/ayuda\">necesitas ayuda</a>?</p>", "<p>¿<a href=\"/ayuda\">Necesitas ayuda</a>?</p>")]

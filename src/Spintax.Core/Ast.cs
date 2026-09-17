@@ -42,11 +42,12 @@ namespace Spintax.Core
         public IReadOnlyList<IReadOnlyList<Node>> Options { get; }
 
         /// <summary>
-        /// The content between the braces, kept ONLY when an option holds a direct <c>%var%</c>
-        /// reference (<c>Parser.HasDirectReference</c>). The renderer splices such a value into
-        /// the body as TEXT and re-reads the construct, because a <c>|</c> inside a substituted
-        /// value separates options in the reference engines — their expansion runs before any
-        /// bracket is read. <c>null</c> on every other construct, so the parsed tree stays the
+        /// The content between the braces, kept ONLY when an option holds something the reference
+        /// engines read as TEXT before they split it — a direct <c>%var%</c> or a <c>{?…}</c>
+        /// conditional (<c>Parser.NeedsTextualReread</c>). The renderer resolves and splices it
+        /// into the body as text and re-reads the construct, because their conditional pass and
+        /// their expansion both run before any bracket is read, so a <c>|</c> either one carries
+        /// separates options. <c>null</c> on every other construct, so the parsed tree stays the
         /// one rendered.
         /// </summary>
         public string? Raw { get; }
@@ -102,10 +103,11 @@ namespace Spintax.Core
 
         /// <summary>
         /// The FULL inner text, <c>&lt;config&gt;</c> included, kept only when the construct holds
-        /// a direct <c>%var%</c> reference — in an element, in a conditional's branch, in the
-        /// config's separators or in a per-element one. The re-read starts from the config again,
-        /// so <c>[&lt;sep="%S%"&gt;a|b]</c> takes its separator from the value, as it does in the
-        /// reference engines. <c>null</c> otherwise.
+        /// text the reference engines resolve before the split: a direct <c>%var%</c> or a
+        /// <c>{?…}</c> in an element, or either of them ANYWHERE in the raw <c>&lt;…&gt;</c> header
+        /// or a per-element separator (spintax-js#80). The re-read starts from the config again,
+        /// so <c>[&lt;sep="%S%"&gt;a|b]</c> and <c>[&lt;minsize=%n%&gt;a|b|c]</c> take their config
+        /// from the values, as they do in the reference engines. <c>null</c> otherwise.
         /// </summary>
         public string? Raw { get; }
     }

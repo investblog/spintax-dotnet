@@ -28,13 +28,16 @@ namespace Spintax.Core
     /// expanded by substituting ITS polynomial into the term (a def that references another def
     /// shares that def's roll — <c>#def %a% = %b%</c> does not double anything), until no
     /// reference is left. Permutations: for each allowed size <c>k</c>, every ordered subset —
-    /// <c>k!·e_k(c₁…cₙ)</c>. Plurals follow the renderer's stage: brackets in the forms or the
+    /// <c>k!·e_k(c₁…cₙ)</c> — over the elements that SURVIVE, because an element whose rendered
+    /// text is blank is dropped and the size clamp follows the survivors (spintax-js#80), so the
+    /// walk carries a second dimension for how many were dropped. Plurals follow the renderer's stage: brackets in the forms or the
     /// wrong arity emit the construct verbatim (one outcome); for a row, a non-numeric count
     /// erases the block and a count that depends on a <c>#def</c> roll counts every form. Values
     /// from the row that contain constructs are re-parsed, as the renderer re-parses them. Counts
     /// and lengths saturate at <see cref="long.MaxValue"/>. The longest permutation is exact
     /// for global separators; with per-element separators the longest of them stands in for every
-    /// slot, an upper bound.
+    /// slot, and where an element can render blank the full element list is measured — both upper
+    /// bounds, because dropping only shortens.
     /// <para>
     /// Two of the renderer's caps ARE mirrored: the variable cap applies to variable hops only
     /// (rolling a definition is not one), and a fixpoint that ran out of passes freezes its
@@ -331,7 +334,7 @@ namespace Spintax.Core
                         return Variable(v.Name);
                     case EnumerationNode e:
                         {
-                            var re = ReRead(e.Raw, '{', '}');
+                            var re = ReRead(e, e.Raw, '{', '}');
                             if (re != null) return re.Value;
                             var poly = new Poly();
                             long length = 0;
@@ -354,7 +357,7 @@ namespace Spintax.Core
                         return Plural(p);
                     case PermutationNode perm:
                         {
-                            var re = ReRead(perm.Raw, '[', ']');
+                            var re = ReRead(perm, perm.Raw, '[', ']');
                             return re ?? Permutation(perm);
                         }
                     default:
@@ -376,7 +379,16 @@ namespace Spintax.Core
             /// <c>Poly.Ref</c> handling — a <c>#def</c> value carrying a <c>|</c> inside a
             /// construct is therefore still counted as one option (<c>docs/TODO.md</c>).
             /// </remarks>
-            private (Poly, long)? ReRead(string? raw, char open, char close)
+            /// <summary>
+            /// The body a marked construct was re-read from, by node — filled here and read by
+            /// <see cref="BlankWaysOf"/>, which must ask the same tree this walk counted. Every
+            /// node of the template is visited once per walk, and a definition or a value is
+            /// parsed fresh at each visit, so an entry is never stale.
+            /// </summary>
+            private readonly Dictionary<Node, IReadOnlyList<Node>> _reReadNodes =
+                new Dictionary<Node, IReadOnlyList<Node>>();
+
+            private (Poly, long)? ReRead(Node owner, string? raw, char open, char close)
             {
                 if (raw is null || _frozen) return null;
                 // Only a row can take a branch; without one the conditional survives into the
@@ -388,11 +400,13 @@ namespace Spintax.Core
                 var expanded = ExpandMacros(text, PassesLeft);
                 var body = _forRow ? Renderer.ResolveConditionalsInText(expanded.Text, TakesThen) : expanded.Text;
                 if (body == raw) return null;
-                if (expanded.Converged) return Guarded(() => Sequence(Parser.ParseSequence(open + body + close)), (Poly.One(), 0L));
+                var nodes = Parser.ParseSequence(open + body + close);
+                _reReadNodes[owner] = nodes;
+                if (expanded.Converged) return Guarded(() => Sequence(nodes), (Poly.One(), 0L));
                 // Still changing on the last allowed pass: the renderer freezes the whole subtree,
                 // so every reference left in it is literal text and earns no fresh allowance here
                 // either — otherwise the count describes an expansion the render never performs.
-                return Frozen(() => Guarded(() => Sequence(Parser.ParseSequence(open + body + close)), (Poly.One(), 0L)));
+                return Frozen(() => Guarded(() => Sequence(nodes), (Poly.One(), 0L)));
             }
 
             /// <summary>Run <paramref name="walk"/> with every remaining reference literal (the renderer's <c>WalkOptions.Frozen</c>).</summary>
@@ -851,6 +865,17 @@ namespace Spintax.Core
                 return poly;
             }
 
+            /// <summary>
+            /// The blank ways of a marked construct: the body <see cref="ReRead"/> gave it, when
+            /// this walk re-read one. No entry means the re-read changed nothing (an undefined
+            /// name, a frozen subtree) and the tree was counted as parsed — but its own <c>Raw</c>
+            /// says a value could still arrive, so the answer is "not blank".
+            /// </summary>
+            private Poly ReReadBlankWays(Node node) =>
+                _reReadNodes.TryGetValue(node, out var nodes)
+                    ? Guarded(() => BlankWays(nodes), new Poly())
+                    : new Poly();
+
             private Poly BlankWaysOf(Node node)
             {
                 switch (node)
@@ -859,7 +884,10 @@ namespace Spintax.Core
                         return Parser.PhpTrim(lit.Value).Length == 0 ? Poly.One() : new Poly();
                     case EnumerationNode e:
                         {
-                            if (e.Raw != null) return new Poly();
+                            // A marked construct is counted from the body the re-read gave it, so
+                            // that is the tree to ask: `[a|{%v%|}|c]` with `v = x` re-reads to
+                            // `{x|}`, whose empty option is what the renderer drops.
+                            if (e.Raw != null) return ReReadBlankWays(e);
                             var poly = new Poly();
                             foreach (var option in e.Options)
                                 poly = Poly.Add(poly, Guarded(() => BlankWays(option), new Poly()));
@@ -876,7 +904,7 @@ namespace Spintax.Core
                         {
                             // Blank exactly when every element of it is: then the renderer has no
                             // survivor left and returns "".
-                            if (perm.Raw != null) return new Poly();
+                            if (perm.Raw != null) return ReReadBlankWays(perm);
                             var poly = Poly.One();
                             foreach (var option in perm.Options)
                             {
