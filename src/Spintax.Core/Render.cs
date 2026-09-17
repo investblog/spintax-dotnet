@@ -827,12 +827,28 @@ namespace Spintax.Core
             return ("", new Pending(lists, parts => AssemblePermutation(node, parts, opts)));
         }
 
-        /// <summary>Shuffle and join once every element is rendered — the size pick and the shuffle draw AFTER the children.</summary>
+        /// <summary>
+        /// Shuffle and join once every element is rendered — the size pick and the shuffle draw
+        /// AFTER the children.
+        /// <para>
+        /// An element is its RENDERED text, trimmed, and one that renders empty is no element
+        /// (spintax-js#80). The plugin resolves every nested enumeration and permutation before it
+        /// splits this one, so the parts it splits are already that text — each trimmed, the empty
+        /// ones dropped along with the separator they carried. The parse does the same to the raw
+        /// parts, but <c>[slots|{live casino|}|poker]</c> is three parts there and only two
+        /// elements once <c>{live casino|}</c> picks its empty option; kept, it printed
+        /// <c>slots, , poker</c>. The size pick and the shuffle count what remains, as PHP's do;
+        /// an element whose text is neither empty nor padded changes nothing, draws included.
+        /// </para>
+        /// </summary>
         private static string AssemblePermutation(PermutationNode node, List<string> rendered, WalkOptions opts)
         {
             var elements = new List<Element>(node.Options.Count);
             for (var i = 0; i < node.Options.Count; i++)
-                elements.Add(new Element(i < rendered.Count ? rendered[i] : "", node.Options[i].Separator));
+            {
+                var text = Parser.PhpTrim(i < rendered.Count ? rendered[i] : "");
+                if (text.Length != 0) elements.Add(new Element(text, node.Options[i].Separator));
+            }
             var total = elements.Count;
             if (total == 0) return "";
 

@@ -134,6 +134,64 @@ namespace Spintax.Core.Tests
             Assert.Equal(census, seen.Count);
         }
 
+        [Theory]
+        // An element that can render blank is dropped, with the separator it carried, and the size
+        // clamp and the shuffle count what is left (spintax-js#80). The count follows the draw:
+        // 3! ways when {b|} picks b, 2! when it picks nothing — 8, not the 3!·2 = 12 the element
+        // list alone says. MaxLength is measured on the full list, where the longest render is.
+        [InlineData("[a|{b|}|c]", 8, 5)]
+        [InlineData("[<minsize=3;maxsize=3>a|{b|}|c]", 8, 5)]
+        [InlineData("[a<1>|{x|}<2>|b]", 8, 5)]
+        // Two droppable elements, and the all-blank draw, which renders "" — one outcome, not none.
+        [InlineData("[{a|}|{b|}]", 5, 3)]
+        public void A_droppable_element_is_counted_as_the_renderer_draws_it(string template, long combos, long maxLen)
+        {
+            Assert.Equal(combos, Engine.Combinations(template));
+            Assert.Equal(maxLen, Engine.MaxLength(template));
+            Assert.Equal(combos, DistinctRenders(template));
+        }
+
+        [Fact]
+        public void A_dropped_element_narrows_the_size_range_the_count_uses()
+        {
+            // Nine paths while {b|} draws b — three singles and six ordered pairs — and four more
+            // when it draws nothing, because the clamp is then 1..2 of TWO survivors. Thirteen
+            // paths over nine distinct texts: "a" and "a c" are drawn in both readings, and this
+            // walk counts paths, as it counts {a|a} as 2 (see the class remarks).
+            Assert.Equal(13, Engine.Combinations("[<minsize=1;maxsize=2>a|{b|}|c]"));
+            Assert.Equal(9, DistinctRenders("[<minsize=1;maxsize=2>a|{b|}|c]"));
+            Assert.Equal(3, Engine.MaxLength("[<minsize=1;maxsize=2>a|{b|}|c]")); // "a b"
+        }
+
+        [Fact]
+        public void A_permutation_of_elements_that_never_blank_counts_exactly_as_it_did()
+        {
+            // The dropping walk is the old Σ k!·e_k when nothing can be dropped — the ordinary
+            // template, and the property that keeps this change from moving any other number.
+            Assert.Equal(6, Engine.Combinations("[a|b|c]"));
+            Assert.Equal(9, Engine.Combinations("[<minsize=1;maxsize=2>a|b|c]"));
+            Assert.Equal(4, Engine.Combinations("[{a|b}|c]"));
+        }
+
+        /// <summary>
+        /// Every draw of a template whose outputs are all different, enumerated through the RNG
+        /// seam — the same brute force as <see cref="The_count_matches_an_exhaustive_enumeration_of_picks"/>.
+        /// </summary>
+        private static int DistinctRenders(string template)
+        {
+            var seen = new HashSet<string>();
+            for (var trial = 0; trial < 20000; trial++)
+            {
+                var seq = new int[8];
+                var s = trial;
+                for (var i = 0; i < seq.Length; i++) { seq[i] = s % 3; s /= 3; }
+                var k = 0;
+                Rng rng = (min, max) => System.Math.Max(min, System.Math.Min(max, seq[System.Math.Min(k++, seq.Length - 1)]));
+                seen.Add(Engine.RenderWith(template, rng, new RenderOptions { PostProcess = false }));
+            }
+            return seen.Count;
+        }
+
         // ── the exhaustion paths: what the count says where the render stops expanding ──────
         // Each of these reported a number the engine contradicted until 2026-09-12, and each was
         // measured against the render before and after (docs/TODO.md, the Codex gate).

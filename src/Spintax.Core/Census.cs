@@ -161,6 +161,27 @@ namespace Spintax.Core
                 foreach (var kv in a) r[kv.Key] = kv.Value * factor;
                 return r;
             }
+
+            /// <summary>
+            /// <paramref name="b"/> taken out of <paramref name="a"/>, term by term — the ways a
+            /// permutation element does NOT render blank. Only ever called with a <paramref name="b"/>
+            /// built from <paramref name="a"/>'s own structure, so a term cannot go negative; a
+            /// term that reaches zero is dropped, which keeps "no ways" spelled one way (an
+            /// empty poly) for <see cref="IsZero"/>.
+            /// </summary>
+            public static Poly Sub(Poly a, Poly b)
+            {
+                var r = new Poly();
+                foreach (var kv in a)
+                {
+                    b.TryGetValue(kv.Key, out var minus);
+                    var left = kv.Value - minus;
+                    if (left > BigInteger.Zero) r[kv.Key] = left;
+                }
+                return r;
+            }
+
+            public static bool IsZero(Poly a) => a.Count == 0;
         }
 
         private sealed class Walker
@@ -662,42 +683,118 @@ namespace Spintax.Core
                 return digits.Length > 0 && digits[0] == '-' ? double.NegativeInfinity : double.PositiveInfinity;
             }
 
+            /// <summary>
+            /// The renderer's size range for a permutation of <paramref name="total"/> elements —
+            /// the SURVIVING ones, which is what the renderer clamps against (spintax-js#80).
+            /// </summary>
+            private static (int min, int max) SizeRange(PermConfig cfg, int total)
+            {
+                int min, max;
+                if (cfg.MinSize.HasValue && cfg.MaxSize.HasValue) { min = cfg.MinSize.Value; max = cfg.MaxSize.Value; }
+                else if (cfg.MinSize.HasValue) { min = cfg.MinSize.Value; max = total; }
+                else if (cfg.MaxSize.HasValue) { min = 1; max = cfg.MaxSize.Value; }
+                else { min = total; max = total; }
+                min = Math.Max(1, Math.Min(min, total));
+                max = Math.Max(min, Math.Min(max, total));
+                return (min, max);
+            }
+
+            /// <summary>
+            /// The permutation, counted as the renderer draws it — the elements it DROPS included.
+            /// An element whose rendered text is PHP-trim blank is no element (spintax-js#80), so
+            /// the size clamp and the shuffle run over the survivors: <c>[a|{b|}|c]</c> draws 6
+            /// ways when <c>{b|}</c> picks <c>b</c> and 2 when it picks nothing — 8, where the
+            /// element count alone says 3!·e₃ = 12.
+            /// </summary>
+            /// <remarks>
+            /// The usual e_k recurrence with a second dimension, <c>d</c>: how many elements have
+            /// been dropped. Each element is dropped (its blank ways), chosen for the join (its
+            /// non-blank ways), or a survivor the pick leaves out (ONE way — an element outside the
+            /// pick has never multiplied anything here, because its text is discarded). Then every
+            /// <c>d</c> is clamped on its own survivor count. With no droppable element — every
+            /// ordinary template — the <c>d</c> dimension never grows and this is exactly the
+            /// Σ k!·e_k it was, term for term.
+            /// </remarks>
             private (Poly, long) Permutation(PermutationNode perm)
             {
                 var n = perm.Options.Count;
                 if (n == 0) return (Poly.One(), 0);
                 var polys = new Poly[n];
+                var blanks = new Poly[n];
+                var fulls = new Poly[n];
                 var lengths = new long[n];
+                var droppable = 0;
                 for (var i = 0; i < n; i++)
                 {
-                    var (p, l) = Sequence(perm.Options[i].Nodes);
+                    var nodes = perm.Options[i].Nodes;
+                    var (p, l) = Sequence(nodes);
                     polys[i] = p;
                     lengths[i] = l;
+                    blanks[i] = Guarded(() => BlankWays(nodes), new Poly());
+                    fulls[i] = Poly.Sub(p, blanks[i]);
+                    if (!Poly.IsZero(blanks[i])) droppable++;
                 }
 
-                // The size range exactly as the renderer resolves it.
-                int min, max;
                 var cfg = perm.Config;
-                if (cfg.MinSize.HasValue && cfg.MaxSize.HasValue) { min = cfg.MinSize.Value; max = cfg.MaxSize.Value; }
-                else if (cfg.MinSize.HasValue) { min = cfg.MinSize.Value; max = n; }
-                else if (cfg.MaxSize.HasValue) { min = 1; max = cfg.MaxSize.Value; }
-                else { min = n; max = n; }
-                min = Math.Max(1, Math.Min(min, n));
-                max = Math.Max(min, Math.Min(max, n));
 
-                // e_k over polynomials by the standard recurrence; combinations = Σ_k k!·e_k.
-                var e = new Poly[n + 1];
-                e[0] = Poly.One();
-                for (var k = 1; k <= n; k++) e[k] = new Poly();
-                foreach (var p in polys)
-                    for (var k = n; k >= 1; k--) e[k] = Poly.Add(e[k], Poly.Mul(e[k - 1], p));
-                var total = new Poly();
-                BigInteger factorial = BigInteger.One;
-                for (var k = 1; k <= max; k++)
+                // With no size written, the pick is every survivor, so a survivor the pick leaves
+                // out cannot reach the answer at all — and skipping that transition keeps the walk
+                // on one diagonal instead of filling the square. It is what a big permutation is:
+                // a spliced list carries a `sep`, not a size.
+                var everySurvivorIsPicked = !cfg.MinSize.HasValue && !cfg.MaxSize.HasValue;
+
+                // dp[d][k]: the ways to have dropped d of the elements seen so far and chosen k of
+                // the survivors. `d` never exceeds the number of elements that CAN come out blank,
+                // and an element that can is not among the d already dropped when it is processed,
+                // so droppable + 1 rows are enough. A null cell is zero — the layer is sparse, or
+                // a 200-element permutation allocates 8 million of them.
+                var dp = new Poly[droppable + 2][];
+                AddTo(dp, 0, 0, Poly.One(), n);
+                for (var i = 0; i < n; i++)
                 {
-                    factorial *= k;
-                    if (k >= min) total = Poly.Add(total, Poly.Scale(e[k], factorial));
+                    var next = new Poly[droppable + 2][];
+                    for (var d = 0; d < dp.Length; d++)
+                    {
+                        if (dp[d] == null) continue;
+                        for (var k = 0; k < dp[d].Length; k++)
+                        {
+                            var cur = dp[d][k];
+                            if (cur == null) continue;
+                            if (!Poly.IsZero(blanks[i])) AddTo(next, d + 1, k, Poly.Mul(cur, blanks[i]), n);
+                            if (!Poly.IsZero(fulls[i]))
+                            {
+                                AddTo(next, d, k + 1, Poly.Mul(cur, fulls[i]), n);
+                                if (!everySurvivorIsPicked) AddTo(next, d, k, cur, n);
+                            }
+                        }
+                    }
+                    dp = next;
                 }
+
+                var total = new Poly();
+                for (var d = 0; d < dp.Length; d++)
+                {
+                    if (dp[d] == null) continue;
+                    var survivors = n - d;
+                    // Every element blank: the renderer returns "" — one outcome, not none.
+                    if (survivors == 0)
+                    {
+                        if (dp[d][0] != null) total = Poly.Add(total, dp[d][0]);
+                        continue;
+                    }
+                    var (dMin, dMax) = SizeRange(cfg, survivors);
+                    BigInteger fact = BigInteger.One;
+                    for (var k = 1; k <= dMax; k++)
+                    {
+                        fact *= k;
+                        if (k >= dMin && dp[d][k] != null) total = Poly.Add(total, Poly.Scale(dp[d][k], fact));
+                    }
+                }
+
+                // The longest render drops nothing — dropping removes an element AND its separator,
+                // and narrows the clamp with it — so the length is measured on the full element
+                // list. It is an upper bound where an element can come out blank (docs/TODO.md).
+                var (_, max) = SizeRange(cfg, n);
 
                 // Longest: the `max` largest elements, joined as the renderer joins — sep between
                 // the first ones, lastsep (or sep) once before the last, each padded as render
@@ -717,6 +814,81 @@ namespace Spintax.Core
                 }
                 var joins = max < 2 ? 0 : SatAdd(SatMul(max - 2, sepLen), lastLen);
                 return (total, SatAdd(body, joins));
+            }
+
+            /// <summary>Add a term into a sparse <c>dp[d][k]</c> layer of <see cref="Permutation"/> (null = zero).</summary>
+            private static void AddTo(Poly[][] layer, int d, int k, Poly value, int n)
+            {
+                if (d >= layer.Length || k > n + 1) return;
+                if (layer[d] == null) layer[d] = new Poly[n + 2];
+                layer[d][k] = layer[d][k] == null ? value : Poly.Add(layer[d][k], value);
+            }
+
+            /// <summary>
+            /// The ways a permutation element renders BLANK — PHP-trim whitespace only, which is
+            /// what the renderer drops (spintax-js#80). An element is blank when every node in it
+            /// is, so the walk is a product over the sequence and a sum over an enumeration's
+            /// options, in the same term algebra as the count itself.
+            /// </summary>
+            /// <remarks>
+            /// Structural, and deliberately answers "not blank" wherever it cannot prove blank:
+            /// a variable (the renderer emits an undefined name verbatim, which is not blank, and
+            /// a row value that is blank has already been spliced into the body by the re-read), a
+            /// definition reference, a plural, and any construct whose counted tree is not its
+            /// parsed tree (<c>Raw</c> — the re-read's body is). Those are gaps of the same family
+            /// as the ones in <c>docs/TODO.md</c>, and each of them can only make this count higher
+            /// than the render's, never lower than the tree's own.
+            /// </remarks>
+            private Poly BlankWays(IReadOnlyList<Node> nodes)
+            {
+                var poly = Poly.One();
+                foreach (var node in nodes)
+                {
+                    var ways = BlankWaysOf(node);
+                    if (Poly.IsZero(ways)) return new Poly(); // one node that never is ends it
+                    poly = Poly.Mul(poly, ways);
+                }
+                return poly;
+            }
+
+            private Poly BlankWaysOf(Node node)
+            {
+                switch (node)
+                {
+                    case LiteralNode lit:
+                        return Parser.PhpTrim(lit.Value).Length == 0 ? Poly.One() : new Poly();
+                    case EnumerationNode e:
+                        {
+                            if (e.Raw != null) return new Poly();
+                            var poly = new Poly();
+                            foreach (var option in e.Options)
+                                poly = Poly.Add(poly, Guarded(() => BlankWays(option), new Poly()));
+                            return poly;
+                        }
+                    case ConditionalNode c:
+                        {
+                            if (_forRow) return Guarded(() => BlankWays(TakesThen(c.Name, c.Inverted) ? c.Then : c.Else), new Poly());
+                            return Poly.Add(
+                                Guarded(() => BlankWays(c.Then), new Poly()),
+                                Guarded(() => BlankWays(c.Else), new Poly()));
+                        }
+                    case PermutationNode perm:
+                        {
+                            // Blank exactly when every element of it is: then the renderer has no
+                            // survivor left and returns "".
+                            if (perm.Raw != null) return new Poly();
+                            var poly = Poly.One();
+                            foreach (var option in perm.Options)
+                            {
+                                var ways = Guarded(() => BlankWays(option.Nodes), new Poly());
+                                if (Poly.IsZero(ways)) return new Poly();
+                                poly = Poly.Mul(poly, ways);
+                            }
+                            return poly;
+                        }
+                    default:
+                        return new Poly();
+                }
             }
 
             private static long PaddedLength(string sep)
