@@ -1,17 +1,13 @@
 # Known-failing corpus cases — the baseline the corpus gate compares against.
 #
-# EMPTY. The whole golden corpus passes: PASS=277 FAIL=0 SKIP=0 — 273 deterministic cases
-# exact (the 10 tagged engines:["ts","py"] and the 19 splice/* cases of 2026-09-12 included)
-# and the 4 kind:rng cases on their invariants.
+# EMPTY. The whole golden corpus passes: PASS=333 FAIL=0 SKIP=0 on net8.0 and on net472
+# (2026-09-17, against spintax-js@main at 987b080 / @spintax/core 0.9.0) — 329 deterministic
+# cases exact and the 4 kind:rng cases on their invariants.
 #
 # It was not always empty. While the engine was built (in spintax-zenno, 2026-08-21) it listed
 # all 258 cases against an empty core and shrank step by step as the port landed; it arrived
-# here empty.
+# here empty, and stayed empty through the 0.9.0 catch-up (investblog/spintax-dotnet#2), which
+# went 297/36 → 333/0 in five steps without ever parking a case here.
 #
-# The runner (tests/Spintax.Corpus --baseline <this file>) exits 0 only when the set of failing
-# case ids equals this list, so:
-#   * ANY failure is now a regression and blocks the push — fix it, do not add it here;
-#   * if a case ever legitimately becomes expected-to-fail, add it here WITH a reason: an empty
-#     baseline is a claim, and it should not be weakened silently.
-#
-# Format: <fixture file><space><space><case id>. Sorted. Comments and blank lines ignored.
+# A case belongs here only with a reason and a date, and it must leave the file in the same
+# commit that makes it pass.

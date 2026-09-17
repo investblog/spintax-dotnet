@@ -11,8 +11,8 @@ source: it runs on .NET Framework 4.7.2+ and on every .NET since.
 This is the fifth engine in the Spintax family, and an **independent implementation** — not a
 transcription of the others. It is held to the same behaviour contract by a **shared golden
 corpus** of language-neutral fixtures, the one that gates the TypeScript, PHP, Python and Object
-Pascal engines. All **277 of its cases pass here, on both targets, none skipped, none expected to
-fail** — the 273 deterministic ones on output, the 4 `kind:rng` ones through the engine's RNG seam.
+Pascal engines. All **333 of its cases pass here, on both targets, none skipped, none expected to
+fail** — the 329 deterministic ones on output, the 4 `kind:rng` ones through the engine's RNG seam.
 
 ## Install
 
@@ -127,10 +127,10 @@ sense: a new failure fails the build, and a case that starts passing must be rem
 in the same commit. It is empty.
 
 ```
-PASS=277  FAIL=0  SKIP=0    # net8.0 and net472, 2026-09-12
+PASS=333  FAIL=0  SKIP=0    # net8.0 and net472, 2026-09-17
 ```
 
-The port's own unit tests (`tests/Spintax.Core.Tests`, 187 on each host) pin what the corpus
+The port's own unit tests (`tests/Spintax.Core.Tests`, 206 on each host) pin what the corpus
 cannot express: 1-based positions, plural buckets for locales the corpus lacks, JavaScript text
 semantics (`JsText`: the JS whitespace set, the four line terminators, `String.prototype.toUpperCase`
 special casing), the census and where it saturates, and the assembly contract — two targets, zero package

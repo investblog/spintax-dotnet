@@ -56,11 +56,13 @@ namespace Spintax.Core
         // a domain. The accepted cost, pinned by the corpus: `Yandex.Money` renders
         // `Yandex. Money`, and `info@example.Com` is no longer shielded as an email.
         //
-        // PHP writes the one-case alternative under `(?-i:…)`. .NET has inline modifiers, but not
-        // the case-folding to go with them: `RegexOptions.IgnoreCase` folds by an equivalence table
-        // on net8 and by lower-casing the input character on net472, and the two differ on exactly
-        // U+017F and U+212A. So the domain patterns carry no `i` on either host and spell out the
-        // one part that is case-insensitive — the punycode form.
+        // PHP writes the one-case alternative under `(?-i:…)`. .NET has inline modifiers, but its
+        // caseless matching is a third dialect again, measured on both hosts (2026-09-17):
+        // `\p{Ll}` under `i` matches an upper-case letter, as JavaScript's does and PCRE2's does
+        // not, and a caseless `[a-z]` takes U+212A on net8 but not on net472, and U+017F on
+        // neither — where PCRE2's takes both. So the domain patterns carry no `i` on either host
+        // and spell out the one part that is case-insensitive, the punycode form, U+017F and
+        // U+212A included.
         private const string TldLower = @"\p{Ll}\p{Lm}\p{Lo}";
         private const string TldUpper = @"\p{Lu}\p{Lt}\p{Lm}\p{Lo}";
         private const string Tld =
@@ -149,7 +151,9 @@ namespace Spintax.Core
         // PHP writes the block-tag pass `/ui`, but PCRE2 does not fold a Unicode property, so its
         // `\p{Ll}` is still lower case only — only the tag NAME is caseless. JavaScript's `\p{Ll}`
         // under `i` takes every cased letter, and reading it that way turned a titlecase `ǅ` after
-        // `<p>` into `Ǆ` where PHP keeps it (spintax-js#79).
+        // `<p>` into `Ǆ` where PHP keeps it (spintax-js#79). .NET reads it JavaScript's way too
+        // (measured: `\p{Ll}` under IgnoreCase matches `A` on both hosts), which is why the `i`
+        // here reaches the tag names and nothing else.
         private static readonly Regex BlockTagNameRe = new Regex(@"\G<\/?(?:p|h[1-6]|li|blockquote|div|td|th)", Ci);
 
         /// <summary>`.`, `!`, `?` and `…` — the boundaries of the sentence capitalizer.</summary>
