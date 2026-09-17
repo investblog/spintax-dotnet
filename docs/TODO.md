@@ -77,6 +77,16 @@ project: spintax-dotnet
   `@spintax/core`, and not here. No corpus case pins any of them, and no pattern that still
   carries `i` contains a `k`, so the net8/net472 difference on U+212A has no consumer in this
   engine today.
+- **A chain of marked constructs costs more than linear, measured 2026-09-17.** A construct the
+  parser marks keeps its body, and a body holds every body below it: `{%v%{%v%{…}}}` nested 500 /
+  1000 / 2000 / 4000 deep (2.5–20 KB of template) renders in 22 / 29 / 95 / 273 ms and allocates
+  9 / 14 / 22 / 170 MB. JavaScript pays nothing for this — V8's `slice` is a view — and .NET's
+  `Substring` copies. `spintax-win` shipped a retention cap for the same shape and replaced it the
+  same day with a structural rule: **a descendant of a retained construct never takes a body of its
+  own**, which holds because a parent whose body did not change has nothing inside it that could
+  have, and a parent that re-reads re-parses its descendants anyway. Not ported here: it needs the
+  parser to clear what it has already built, and no corpus case pins it. The alternative is what
+  the reference did — keep offsets into the source instead of a substring.
 - Two costs left where the reference removed them, neither corpus-pinned: `Parser.LooksLikeHtmlStartTag`
   compiles a regex from the tag name on every call (the reference scans instead — it had to, V8
   refuses to compile a pattern past ~7.8 KB), and `PostProcessor.Restore` runs the per-key loop
