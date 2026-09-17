@@ -24,8 +24,10 @@ repository on 2026-08-22 so that the engine has the same standing as `@spintax/c
 checkout (`../spintax-dotnet`) until a published package replaces that.
 
 **The golden corpus is the source of truth, not the eye:**
-`W:\projects\spintax-js\packages\conformance\fixtures\*.json` — read from a checkout, never
-vendored (`docs/decisions/0001`). The reference implementation is `@spintax/core` (TypeScript);
+`<spintax-js checkout>/packages/conformance/fixtures/*.json` — resolved from `SPINTAX_FIXTURES`,
+then the sibling `../spintax-js`, and read from a checkout, never vendored (`docs/decisions/0001`).
+On this machine that is `C:\projects\spintax\spintax-js`; the `W:\` path this line used to give
+does not exist since the PC move. The reference implementation is `@spintax/core` (TypeScript);
 the closest model is the Pascal port `spintax-win`. Second oracle: the local MCP `@spintax/mcp`
 (`./.mcp.json`).
 
@@ -63,6 +65,22 @@ Lessons carried over from `spintax-zenno` (each traces to a real incident):
 - **Non-ASCII in C# literals is escaped, always.** U+2028/U+2029 typed raw inside `'…'` are line
   terminators to the compiler (CS1010); combining marks render as garbage in a diff. Write
   `\uXXXX` from the start.
+- **…and a `\uXXXX` written with one backslash does not reach the file — the tooling resolves it
+  in transit.** Three times in one session (2026-09-17), this bullet included: a written
+  `CharClass` landed with a raw U+2028 and would not compile (CS1010); a char literal for
+  U+017F / U+212A landed as the raw letters, which COMPILES and reads as an ASCII `K` in every
+  diff; and the first draft of this line lost its own examples the same way. What survives the
+  trip: TWO backslashes inside a regex pattern string — the C# compiler turns them back into one
+  and the regex engine reads the escape — and `\xNNNN` with all four hex digits inside a char or
+  string literal, which is what `IsEmailLocalChar` and the NBSP capitalizer test use now. In
+  prose, name the code point (U+017F), never the escape. After writing a file with non-ASCII
+  intent, check it: `grep -nP '[^\x00-\x7F]'` and read the lines it prints.
+- **Warm the JIT before quoting a .NET number, and never quote a dialect claim you did not run.**
+  The first post-process probe read 1216 ms per 1000 prose renders against a 33 ms baseline, and
+  that "37× regression" was the first block paying JIT for the whole engine — warm, it is 26 ms
+  against 24. In the same session a comment asserted how `RegexOptions.IgnoreCase` folds on each
+  host; measured, it folds differently than the comment said. A probe runs a warm-up first, and a
+  sentence about a dialect gets a two-minute test before it gets committed.
 - **`Assert.DoesNotContain("\0", s)` is always red on .NET 5+.** The string overload is
   culture-sensitive and ICU treats NUL as ignorable. Use the `char` overload, or ordinal
   comparison, whenever an assertion involves a control character.

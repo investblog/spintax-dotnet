@@ -51,12 +51,14 @@ project: spintax-dotnet
       chain 152 → 0.4 ms, Cyrillic 269 → 1.1) and the capitalizers walk the lead once (20 000
       `\n`+space 11 141 → 6.8 ms, 20 000 `<p>` 7381 → 11.9). Ordinary text is unchanged: prose
       26 ms per 1000 renders, HTML blocks 114.
-- [ ] **Release the catch-up.** `RELEASING.md` says a behaviour fix toward the family contract is a
-      **patch** while 0.x, and nothing in the public API moved — so by this repo's own rule it is
-      `0.1.3`. Worth deciding rather than applying: render output changes for every template of the
-      #79/#80/#81 shapes, and `Combinations` returns different numbers for a droppable element,
-      which is more than the previous two patches carried. `@spintax/core` called the same work a
-      minor (0.8.0, 0.9.0) under a different policy. Unreleased on `main` as of 2026-09-17.
+- [x] **Release `0.1.3`** — the 0.9.0 catch-up (2026-09-17, tag `v0.1.3`, run 35211869880: "Your
+      package was pushed" for the package and the symbols, `api.nuget.org` lists it). A patch by
+      this repo's rule (`RELEASING.md`): a behaviour fix toward the family contract while 0.x, and
+      no public API moved — even though render output changes for every template of the #79/#80/#81
+      shapes and `Combinations` returns different numbers for a droppable element, which is more
+      than the previous two patches carried. `@spintax/core` called the same work a minor (0.8.0,
+      0.9.0) under a different policy; the owner chose the repo's rule. **Not verified by
+      consuming the published package** — 0.1.1 was, this one only by the index listing it.
 
 ## Debts
 
@@ -73,10 +75,17 @@ project: spintax-dotnet
   the config patterns are correct as they are (PHP writes them without `/u`, so byte-mode caseless
   is ASCII). What is left unfixed: three patterns that still use the flag where the reference's
   carries `i` over ASCII letters — the URI scheme, the single-token abbreviations and the HTML
-  closing-tag scan — so `httpſ://x.io` and `vſ.` are shielded by both PHP engines and by
-  `@spintax/core`, and not here. No corpus case pins any of them, and no pattern that still
-  carries `i` contains a `k`, so the net8/net472 difference on U+212A has no consumer in this
-  engine today.
+  closing-tag scan. Measured against `@spintax/core` 0.9.0 (the PHP engines were NOT run):
+
+  | input | `@spintax/core` 0.9.0 | here, 0.1.3 |
+  |---|---|---|
+  | `visit httpſ://x.io/a,b now` | `Visit httpſ://x.io/a,b now` | `Visit httpſ: //x.io/a, b now` |
+  | `see vſ. next` | `See vſ. next` | `See vſ. Next` |
+
+  So it is not only "unshielded": the cosmetic pass then walks into the URI and spaces it. No
+  corpus case pins either, and the family reads `ſ` as `s` only because JS and PCRE2 fold it under
+  `i`; fixing it here means spelling `[sSſ]` out in those three patterns. No pattern that still
+  carries `i` contains a `k`, so the net8/net472 difference on U+212A has no consumer today.
 - **A chain of marked constructs costs more than linear, measured 2026-09-17.** A construct the
   parser marks keeps its body, and a body holds every body below it: `{%v%{%v%{…}}}` nested 500 /
   1000 / 2000 / 4000 deep (2.5–20 KB of template) renders in 22 / 29 / 95 / 273 ms and allocates
