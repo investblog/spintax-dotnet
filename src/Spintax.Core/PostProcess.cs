@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Spintax.Core
@@ -80,8 +81,31 @@ namespace Spintax.Core
         // non-ASCII letters that fold into the class. No `i` here either — see Tld above.
         private const string EmailLocal = "[a-zA-Z0-9._%+\\-\\u017F\\u212A]";
 
-        private static readonly Regex EmailRe = new Regex(EmailLocal + "+@" + DomainPart + B);
-        private static readonly Regex DomainRe = new Regex(AfterNonWord + DomainPart + B);
+        // The email and bare-domain shields are the plugin's patterns — `[a-z0-9._%+\-]+@DOMAIN\b`
+        // and `\bDOMAIN\b` — run by a SCANNER instead of a global replace, because the replace
+        // retries from every start inside a long run: one 131 000-letter word, and a dotted run
+        // `a.a.a.…`, which the one-case TLD above turned from one match into a chain retried from
+        // every label (2000 labels: 0.2 ms as a match, 149 ms as a retry). The scanner tries the
+        // same regex at the same starts, in the same order, and skips only starts that provably
+        // fail. Both PHP engines do the same with `(*SKIP)(*FAIL)`; .NET has no backtracking verb.
+        //
+        // Email: every start inside one run of local-part characters reaches the same end — the
+        // class holds no `@` — so the run's first start matches or none does, and a failed run is
+        // skipped whole. That makes the `@` the thing to look for: the only run that can match is
+        // the one ending at it.
+        private static readonly Regex DomainAtRe = new Regex(@"\G" + DomainPart + B);
+
+        // Domain: an attempt that fails at the start of a chain of labels (`a.b-c.d…`) fails at
+        // every later start in that chain too — prefix the chain's own labels to a match further
+        // in and it is a match here. So a failed attempt skips to where the chain ends. One regex
+        // does all of it: it matches at exactly the starts the shield tries (a word character not
+        // preceded by one — every label begins with one), group 1 is a domain, and when there is
+        // none the whole match is the chain to skip.
+        private static readonly Regex DomainScanRe =
+            new Regex(AfterNonWord + "(?:(" + DomainPart + B + ")|(?:" + Label + @"\.)*" + Label + ")");
+
+        /// <summary>Every domain holds a dot followed by the first character of a label; most prose holds none.</summary>
+        private static readonly Regex DomainDotRe = new Regex(@"\.[\p{L}\p{N}]");
         // PHP's decimal shield is the one pattern here without /u: byte mode, so its `\b` and `\d`
         // are ASCII. Deliberately not widened with the rest.
         private static readonly Regex DecimalRe =
@@ -134,8 +158,8 @@ namespace Spintax.Core
             // 1-5: shield. URIs first and in one pass; EMAIL/DOMAIN after, so a whole `mailto:`
             // survives instead of the address being carved out from under its prefix.
             text = UriRe.Replace(text, m => StoreWithTrailingPunct(placeholders, m.Value, MailTelPrefixRe.IsMatch(m.Value) ? "URI" : "URL"));
-            text = EmailRe.Replace(text, m => placeholders.Store(m.Value, "EMAIL"));
-            text = DomainRe.Replace(text, m => placeholders.Store(m.Value, "DOM"));
+            text = ShieldEmails(text, v => placeholders.Store(v, "EMAIL"));
+            text = ShieldDomains(text, v => placeholders.Store(v, "DOM"));
             text = DecimalRe.Replace(text, m => placeholders.Store(m.Value, "NUM"));
             text = MultiAbbrRe.Replace(text, m => placeholders.Store(m.Value, "ABBR"));
             text = SingleAbbrRe.Replace(text, m => placeholders.Store(m.Value, "ABBR"));
@@ -160,6 +184,56 @@ namespace Spintax.Core
 
             // 12: restore placeholders, then trim (JS semantics — see JsText).
             return JsText.Trim(Restore(text, input, placeholders));
+        }
+
+        /// <summary>
+        /// <c>[a-z0-9._%+-]</c> as the plugin's pattern reads it under <c>iu</c>: both cases, and
+        /// the two non-ASCII letters that fold into the class.
+        /// </summary>
+        private static bool IsEmailLocalChar(char ch) =>
+            (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+            || ch == '.' || ch == '_' || ch == '%' || ch == '+' || ch == '-'
+            || ch == 'ſ' || ch == 'K';
+
+        /// <summary>The email shield, as a scanner over the <c>@</c>s — see <see cref="DomainAtRe"/>.</summary>
+        private static string ShieldEmails(string text, Func<string, string> shield)
+        {
+            StringBuilder? output = null;
+            var emitted = 0;
+            // Where the run search may resume: after the last shield, and past every `@` tried.
+            var resume = 0;
+            for (var at = text.IndexOf('@'); at >= 0; at = text.IndexOf('@', Math.Max(at + 1, resume)))
+            {
+                // The run of local-part characters that ends at this `@`, begun no earlier than
+                // the scan could begin it.
+                var start = at;
+                while (start > resume && IsEmailLocalChar(text[start - 1])) start--;
+                if (start == at) continue; // no run ends here, so no attempt is made at it
+                var m = DomainAtRe.Match(text, at + 1);
+                if (!m.Success) continue;
+                var end = m.Index + m.Length;
+                output ??= new StringBuilder();
+                output.Append(text, emitted, start - emitted).Append(shield(text.Substring(start, end - start)));
+                emitted = resume = end;
+            }
+            return output is null ? text : output.Append(text, emitted, text.Length - emitted).ToString();
+        }
+
+        /// <summary>The bare-domain shield, as a scanner over the label chains — see <see cref="DomainScanRe"/>.</summary>
+        private static string ShieldDomains(string text, Func<string, string> shield)
+        {
+            if (!DomainDotRe.IsMatch(text)) return text;
+            StringBuilder? output = null;
+            var emitted = 0;
+            for (var m = DomainScanRe.Match(text); m.Success; m = m.NextMatch())
+            {
+                var domain = m.Groups[1];
+                if (!domain.Success) continue;
+                output ??= new StringBuilder();
+                output.Append(text, emitted, domain.Index - emitted).Append(shield(domain.Value));
+                emitted = domain.Index + domain.Length;
+            }
+            return output is null ? text : output.Append(text, emitted, text.Length - emitted).ToString();
         }
 
         /// <summary>
