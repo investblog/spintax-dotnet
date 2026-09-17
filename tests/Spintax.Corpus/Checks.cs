@@ -162,6 +162,18 @@ namespace Spintax.Corpus
                     && (col is null || d.Column == col));
                 if (!matched) return $"no diagnostic matching {w.GetRawText()}; got {codes}";
             }
+
+            // `diagnosticCount` is the EXACT number per code, where multiplicity IS the contract
+            // (spintax-js#74). The subset match above says nothing about how many, and that is
+            // what passed two million circular-reference diagnostics behind a green case for
+            // eleven days upstream (#59).
+            if (!c.Expect.TryGetProperty("diagnosticCount", out var counts)) return null;
+            foreach (var want in counts.EnumerateObject())
+            {
+                var have = actual.Count(d => d.Code == want.Name);
+                var wantCount = want.Value.GetInt32();
+                if (have != wantCount) return $"diagnosticCount[{want.Name}]={have} want={wantCount}; got {codes}";
+            }
             return null;
         }
 
