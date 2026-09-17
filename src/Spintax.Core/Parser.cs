@@ -329,57 +329,92 @@ namespace Spintax.Core
             }
             return new Planned(new ChildPlan(
                 SplitTopLevel(content),
-                children => new EnumerationNode(children, HasDirectReference(children) ? content : null)));
+                children => new EnumerationNode(children, NeedsTextualReread(children) ? content : null)));
         }
 
         /// <summary>
-        /// Does a construct body hold a <c>%var%</c> that expansion would splice at THIS
-        /// construct's own level? One at the top level of an option counts, and so does one inside
-        /// a conditional's branches: the reference engines resolve <c>{?…}</c> before they expand,
-        /// so a branch's text lands in the body ahead of the split. Nested enumerations /
-        /// permutations / plurals are not entered — a value inside them is spliced when THEY
-        /// render, and a <c>|</c> it carries belongs to them. Iterative (#68): a deep chain of
-        /// conditionals is content, and the parser must not throw on content.
+        /// Does a construct body hold something the reference engines see as TEXT before they
+        /// split it?
+        /// <list type="bullet">
+        /// <item>A <c>%var%</c> at the top level of an option: expansion runs over the whole text
+        /// before any bracket is read, so a <c>|</c> in the value separates options there (#1).</item>
+        /// <item>A <c>{?…}</c> conditional at the top level of an option: the plugin resolves it at
+        /// Stage 6a, so the taken branch lands in the body ahead of the split — a <c>|</c> it
+        /// carries separates options, and an empty branch leaves an empty element for the
+        /// permutation to drop. This port marked a conditional only when a <c>%var%</c> sat in its
+        /// branches, so <c>[{?f?a|b|x}|c]</c> rendered a raw <c>|</c> (spintax-js#80).</item>
+        /// </list>
+        /// Nested enumerations / permutations / plurals are not entered: a value inside them is
+        /// spliced when THEY render, and a <c>|</c> it carries belongs to them. A conditional marks
+        /// on sight, so there is no branch left to descend into — the scan is flat.
         /// </summary>
-        public static bool HasDirectReference(IReadOnlyList<IReadOnlyList<Node>> lists)
+        public static bool NeedsTextualReread(IReadOnlyList<IReadOnlyList<Node>> lists)
         {
-            var stack = new Stack<IReadOnlyList<Node>>(lists);
-            while (stack.Count > 0)
-            {
-                foreach (var node in stack.Pop())
-                {
-                    if (node is VariableNode) return true;
-                    if (node is ConditionalNode c)
-                    {
-                        stack.Push(c.Then);
-                        stack.Push(c.Else);
-                    }
-                }
-            }
+            foreach (var list in lists)
+                foreach (var node in list)
+                    if (node is VariableNode || node is ConditionalNode) return true;
             return false;
         }
 
         /// <summary>A <c>%var%</c> reference written inside a separator string — config or per-element.</summary>
         private static readonly Regex ReferenceRe = new Regex("%" + Word + "+%");
 
+        /// <summary>
+        /// A whole <c>{?…}</c> the renderer's conditional pass would resolve, written in a config
+        /// header or a separator — Stage 6a resolves it there too, before any bracket is read. A
+        /// bare <c>{?</c> is not enough: <c>&lt;{?}&gt;</c> is a literal separator, and marking it
+        /// made every level of <c>[&lt;{?}&gt;a|[&lt;{?}&gt;a|…]]</c> rescan the nested body for a
+        /// conditional that is not there (found in review upstream).
+        /// </summary>
+        private static bool HoldsConditional(string text)
+        {
+            if (text.IndexOf("{?", StringComparison.Ordinal) < 0) return false;
+            var opens = new Stack<int>();
+            for (var i = 0; i < text.Length; i++)
+            {
+                var ch = text[i];
+                if (ch == '{')
+                {
+                    opens.Push(i);
+                }
+                else if (ch == '}' && opens.Count > 0)
+                {
+                    var open = opens.Pop();
+                    if (open + 1 < text.Length && text[open + 1] == '?'
+                        && RecognizeConditional(text, open + 1, i) != null) return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Text a permutation's config or separator carries that Stage 6a/6b would resolve before the split.</summary>
+        private static bool HoldsTextForReread(string text) => ReferenceRe.IsMatch(text) || HoldsConditional(text);
+
         /// <summary><c>[&lt;config&gt;a|b|c]</c> — config and per-element separators resolve here; the elements are parsed by the loop.</summary>
         private static Planned PlanPermutation(string rawInner)
         {
             var (config, content) = ExtractPermutationConfig(rawInner);
             var (texts, separators) = PermutationElements(SplitTopLevel(content));
-            // The reference engines expand the config and the per-element separators too — to
-            // them it is all text — so a reference written there is as direct as one in an element.
-            var separatorHasRef = ReferenceRe.IsMatch(config.Sep)
-                || (config.LastSep != null && ReferenceRe.IsMatch(config.LastSep));
+            // The reference engines resolve conditionals in and expand the config and the
+            // per-element separators too — to them it is all text — so a reference or a `{?…}`
+            // ANYWHERE in the `<…>` header or a separator is as direct as one in an element: a
+            // size (`minsize=%n%`), an unquoted separator (`sep=%S%`), `lastsep="{?en? and | и }"`.
+            // The header is exactly what precedes the content.
+            //
+            // This port tested the PARSED `sep` and `lastsep` for references only, where `%n%`
+            // never arrives — a size that is not digits parses to nothing, an unquoted separator
+            // to the default — so none of those was ever read as text (spintax-js#80).
+            var header = rawInner.Substring(0, rawInner.Length - content.Length);
+            var textNeedsReread = HoldsTextForReread(header);
             foreach (var sep in separators)
-                if (sep != null && ReferenceRe.IsMatch(sep)) separatorHasRef = true;
+                if (sep != null && HoldsTextForReread(sep)) textNeedsReread = true;
             return new Planned(new ChildPlan(texts, children =>
             {
                 var options = new List<PermOption>(children.Count);
                 for (var i = 0; i < children.Count; i++)
                     options.Add(new PermOption(children[i], i < separators.Count ? separators[i] : null));
                 return new PermutationNode(config, options,
-                    separatorHasRef || HasDirectReference(children) ? rawInner : null);
+                    textNeedsReread || NeedsTextualReread(children) ? rawInner : null);
             }));
         }
 
