@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -135,14 +136,28 @@ namespace Spintax.Core
         // An opener binds to the word it opens. MUST run before capitalisation.
         private static readonly Regex SpaceAfterOpenerRe = new Regex("([" + SentenceOpeners + "])" + S + "+");
         private static readonly Regex CapFirstRe = new Regex("^(" + Lead + @")(\p{Ll})");
-        private static readonly Regex CapAfterSentenceRe = new Regex("([.!?…])(" + Lead + @")(\p{Ll})");
-        // PHP writes this capitalizer `/ui`, but PCRE2 does not fold a Unicode property, so its
+
+        // The capitalizers after a sentence end, a block tag and a line break — the plugin's
+        // `([.!?…])(LEAD)(\p{Ll})`, `(<\/?(?:p|h[1-6]|li|blockquote|div|td|th)[^>]*>LEAD)(\p{Ll})`
+        // (caseless) and `(\nLEAD)(\p{Ll})` — run by a scanner, because the regexes rescanned the
+        // lead from every start: 20 000 of `\n` plus a space took 11.1 s here, and 20 000 `<p>`
+        // with no letter after them 7.4 s.
+        //
+        // What makes a scanner exact is that the lead has one reading. An opener or a whitespace
+        // character is a token of one character; a tag is `<`, at least one character that is not
+        // `>`, then the FIRST `>` — `[^>]+` cannot cross a `>`, so a tag ends where the next `>`
+        // is, and a `<` followed at once by `>`, or by no `>` at all, is no tag. Every shorter run
+        // of tokens ends before a `<`, an opener or a space, none of which is `\p{Ll}`, so a start
+        // matches exactly when the character after its LONGEST lead is a lowercase letter.
+        //
+        // PHP writes the block-tag pass `/ui`, but PCRE2 does not fold a Unicode property, so its
         // `\p{Ll}` is still lower case only — only the tag NAME is caseless. JavaScript's `\p{Ll}`
         // under `i` takes every cased letter, and reading it that way turned a titlecase `ǅ` after
-        // `<p>` into `Ǆ` where PHP keeps it (spintax-js#79). Scoping `i` to the tag names is the
-        // whole of it; the `\p{Lt}` this class once carried reproduced the reference's own bug.
-        private static readonly Regex CapAfterBlockRe = new Regex(@"(<\/?(?i:p|h[1-6]|li|blockquote|div|td|th)[^>]*>" + Lead + @")(\p{Ll})");
-        private static readonly Regex CapAfterBreakRe = new Regex("(\n" + Lead + @")(\p{Ll})");
+        // `<p>` into `Ǆ` where PHP keeps it (spintax-js#79).
+        private static readonly Regex BlockTagNameRe = new Regex(@"\G<\/?(?:p|h[1-6]|li|blockquote|div|td|th)", Ci);
+
+        /// <summary>`.`, `!`, `?` and `…` — the boundaries of the sentence capitalizer.</summary>
+        private const string SentenceEnds = ".!?…";
 
         // The shield's placeholder prefixes; RestoreRe is built from the same list so a new
         // shield pass cannot mint a key shape the restore fails to recognise.
@@ -178,12 +193,152 @@ namespace Spintax.Core
             // 8-11: capitalise — first letter, after sentence punctuation, after block tags,
             // after line breaks — through tags and openers.
             text = CapFirstRe.Replace(text, m => m.Groups[1].Value + JsText.Upper(m.Groups[2].Value[0]));
-            text = CapAfterSentenceRe.Replace(text, m => m.Groups[1].Value + m.Groups[2].Value + JsText.Upper(m.Groups[3].Value[0]));
-            text = CapAfterBlockRe.Replace(text, m => m.Groups[1].Value + JsText.Upper(m.Groups[2].Value[0]));
-            text = CapAfterBreakRe.Replace(text, m => m.Groups[1].Value + JsText.Upper(m.Groups[2].Value[0]));
+            var leads = new LeadIndexCache();
+            text = CapitalizeAfter(text, AfterSentenceEnd, leads);
+            text = CapitalizeAfter(text, AfterBlockTag(), leads);
+            text = CapitalizeAfter(text, AfterLineBreak, leads);
 
             // 12: restore placeholders, then trim (JS semantics — see JsText).
             return JsText.Trim(Restore(text, input, placeholders));
+        }
+
+        /// <summary>
+        /// Where the next boundary of a capitalizer pass is: where the lead after it starts, and
+        /// where to resume searching. <c>false</c> ⇒ no boundary left.
+        /// </summary>
+        private delegate bool NextBoundary(string text, int from, out int leadStart, out int resume);
+
+        /// <summary>
+        /// <c>leadEnd[i]</c>: where the lead that starts at <c>i</c> ends — indexed from the right,
+        /// once per text, when a lead first needs it. Walking every lead in full would read a run
+        /// of line breaks once per break: each one starts a lead that holds the rest.
+        /// </summary>
+        private sealed class LeadIndexCache
+        {
+            private string? _text;
+            private int[]? _leadEnd;
+
+            public int[] For(string text)
+            {
+                // The passes only change the case of letters, and no upper-case mapping is shorter
+                // than its letter, so a text of the same length has every `<`, `>`, opener and
+                // space where the index saw them: one index serves all three passes unless a
+                // letter grew (`ß` → `SS`).
+                if (_leadEnd != null && _text != null && _text.Length == text.Length) return _leadEnd;
+                _text = text;
+                _leadEnd = Build(text);
+                return _leadEnd;
+            }
+
+            private static int[] Build(string text)
+            {
+                var n = text.Length;
+                var leadEnd = new int[n + 1];
+                leadEnd[n] = n;
+                var gt = -1; // the first `>` after the position being indexed
+                for (var i = n - 1; i >= 0; i--)
+                {
+                    var ch = text[i];
+                    var tokenEnd = -1;
+                    if (SentenceOpeners.IndexOf(ch) >= 0 || CharClass.IsUcpSpace(ch)) tokenEnd = i + 1;
+                    else if (ch == '<' && gt > i + 1) tokenEnd = gt + 1;
+                    leadEnd[i] = tokenEnd == -1 ? i : leadEnd[tokenEnd];
+                    if (ch == '>') gt = i;
+                }
+                return leadEnd;
+            }
+        }
+
+        /// <summary>Lead steps walked one character at a time before the index is built.</summary>
+        private const int LeadWalk = 32;
+
+        /// <summary>
+        /// Where the lead starting at <paramref name="i"/> ends. Openers and whitespace are one
+        /// character each, so a short lead is walked; a tag, or a lead longer than
+        /// <see cref="LeadWalk"/>, is answered by the index.
+        /// </summary>
+        private static int LeadEndFrom(string text, int i, LeadIndexCache leads)
+        {
+            var j = i;
+            for (var steps = 0; steps < LeadWalk && j < text.Length; steps++)
+            {
+                var ch = text[j];
+                if (ch == '<') return leads.For(text)[j];
+                if (SentenceOpeners.IndexOf(ch) < 0 && !CharClass.IsUcpSpace(ch)) return j;
+                j++;
+            }
+            return j < text.Length ? leads.For(text)[j] : j;
+        }
+
+        /// <summary>
+        /// One capitalizer pass: for each boundary <paramref name="next"/> finds, upper-case the
+        /// <c>\p{Ll}</c> at the end of the lead after it. After a match the search resumes behind
+        /// the letter, as a global replace does.
+        /// </summary>
+        private static string CapitalizeAfter(string text, NextBoundary next, LeadIndexCache leads)
+        {
+            StringBuilder? output = null;
+            var emitted = 0;
+            var from = 0;
+            while (next(text, from, out var leadStart, out var resume))
+            {
+                from = resume;
+                var at = LeadEndFrom(text, leadStart, leads);
+                if (at >= text.Length) continue;
+                var ch = text[at];
+                if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.LowercaseLetter) continue;
+                output ??= new StringBuilder();
+                output.Append(text, emitted, at - emitted).Append(JsText.Upper(ch));
+                emitted = at + 1;
+                from = emitted;
+            }
+            return output is null ? text : output.Append(text, emitted, text.Length - emitted).ToString();
+        }
+
+        private static bool AfterSentenceEnd(string text, int from, out int leadStart, out int resume)
+        {
+            leadStart = resume = 0;
+            for (var i = from; i < text.Length; i++)
+            {
+                if (SentenceEnds.IndexOf(text[i]) < 0) continue;
+                leadStart = resume = i + 1;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>The block-tag pass asks for the first <c>&gt;</c> after each tag name, at positions that only grow: one scan.</summary>
+        private static NextBoundary AfterBlockTag()
+        {
+            var gtFrom = -1;
+            var gt = -1;
+            return (string text, int from, out int leadStart, out int resume) =>
+            {
+                leadStart = resume = 0;
+                for (var lt = text.IndexOf('<', from); lt >= 0; lt = text.IndexOf('<', lt + 1))
+                {
+                    var m = BlockTagNameRe.Match(text, lt);
+                    if (!m.Success) continue;
+                    var nameEnd = m.Index + m.Length;
+                    if (gtFrom == -1 || nameEnd < gtFrom || (gt != -1 && nameEnd > gt))
+                    {
+                        gtFrom = nameEnd;
+                        gt = text.IndexOf('>', nameEnd);
+                    }
+                    if (gt == -1) continue;
+                    leadStart = gt + 1;
+                    resume = lt + 1;
+                    return true;
+                }
+                return false;
+            };
+        }
+
+        private static bool AfterLineBreak(string text, int from, out int leadStart, out int resume)
+        {
+            var at = from >= text.Length ? -1 : text.IndexOf('\n', from);
+            leadStart = resume = at + 1;
+            return at >= 0;
         }
 
         /// <summary>

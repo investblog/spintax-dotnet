@@ -52,6 +52,27 @@ namespace Spintax.Core.Tests
         [InlineData("See e.g. this", "See e.g. this")]
         public void Shielding(string input, string expected) => Assert.Equal(expected, PP(input));
 
+        [Theory]
+        // The capitalizers read the lead with a scanner, not a regex that rescans it from every
+        // start (11.1 s on 20 000 of `\n` plus a space, 6.8 ms now). These are the shapes where a
+        // scanner could part company with the pattern it replaces, every expectation taken from
+        // the reference engine 0.9.0.
+        [InlineData("a.<b", "A.<b")]                       // no `>`: not a tag, so the lead ends at `<`
+        [InlineData("x.<>y", "X.<>y")]                     // `<>` is no tag either — `[^>]+` needs a character
+        [InlineData("a.<b>c</b>", "A.<b>C</b>")]           // a tag the lead crosses
+        [InlineData("end. <p>x</p>", "End. <p>X</p>")]
+        [InlineData("<p><p><p><p>x</p>", "<p><p><p><p>X</p>")]
+        [InlineData("one.                                        two", "One. Two")] // a lead past the 32-step walk
+        [InlineData("end.  next", "End.  Next")]                // NBSP is lead whitespace
+        [InlineData("wow!!! really", "Wow!!! Really")]
+        [InlineData("¡¿qué haces?! sí", "¡¿Qué haces?! Sí")]
+        [InlineData("<p>¿<a href=\"/ayuda\">necesitas ayuda</a>?</p>", "<p>¿<a href=\"/ayuda\">Necesitas ayuda</a>?</p>")]
+        // A letter that GROWS when upper-cased (ß → SS) moves every position after it, so the
+        // lead index the next pass uses has to be rebuilt.
+        [InlineData("end. ßeta\n<p>gamma</p>", "End. SSeta\n<p>Gamma</p>")]
+        [InlineData("end. ßeta\ndelta", "End. SSeta\nDelta")]
+        public void The_lead_a_capitalizer_walks(string input, string expected) => Assert.Equal(expected, PP(input));
+
         [Fact]
         public void A_Cyrillic_multi_dot_abbreviation_IS_shielded()
         {
