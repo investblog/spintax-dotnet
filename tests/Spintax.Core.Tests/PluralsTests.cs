@@ -50,6 +50,36 @@ namespace Spintax.Core.Tests
             Assert.Equal(2, Plurals.PluralArity(lang));
         }
 
+        [Theory]
+        [InlineData(0, "zero")]
+        [InlineData(1, "one")]
+        [InlineData(2, "two")]
+        [InlineData(3, "few")]
+        [InlineData(10, "few")]
+        [InlineData(11, "many")]
+        [InlineData(99, "many")]
+        [InlineData(100, "other")]
+        [InlineData(102, "other")]
+        [InlineData(103, "few")]
+        [InlineData(111, "many")]
+        [InlineData(1000, "other")]
+        [InlineData(-2, "two")]
+        public void Arabic_six_forms_in_CLDR_order(double n, string expected)
+        {
+            var six = new[] { "zero", "one", "two", "few", "many", "other" };
+            Assert.Equal(expected, Plurals.PluralFor("ar", n, six));
+            Assert.Equal(6, Plurals.PluralArity("ar"));
+        }
+
+        [Fact]
+        public void An_Arabic_count_past_the_double_range_is_other()
+        {
+            // NaN remainders compare false everywhere: JS falls through to forms[5].
+            var six = new[] { "zero", "one", "two", "few", "many", "other" };
+            Assert.Equal("other", Plurals.PluralFor("ar", double.PositiveInfinity, six));
+            Assert.Equal("other", Plurals.PluralFor("ar", double.NaN, six));
+        }
+
         [Fact]
         public void A_missing_form_is_empty_not_a_throw()
         {

@@ -36,6 +36,18 @@ namespace Spintax.Core.Tests
         [InlineData("  hello  ", "Hello")]
         public void Whitespace_and_punctuation(string input, string expected) => Assert.Equal(expected, PP(input));
 
+        // spintax-js#85: no space between a mark and what closes the quotation or aside it ends.
+        // A quote is a closer by what follows the whole run — the list — not by its shape.
+        [Theory]
+        [InlineData("\"Is it?\", he asked", "\"Is it?\", he asked")]
+        [InlineData("(see above.) next", "(see above.) next")]
+        [InlineData("«Как дела?», и ушёл", "«Как дела?», и ушёл")]
+        [InlineData("say \"yes,\" then", "Say \"yes,\" then")]
+        [InlineData("Is it?\"Next\" one", "Is it? \"Next\" one")]        // a word follows: an opener, spaced
+        [InlineData("Is it?\"(x)\" one", "Is it? \"(x)\" one")]          // `(` is not on the list
+        [InlineData("end.\u201D\u2019 next", "End.\u201D\u2019 next")]  // a run of quotes is read whole
+        public void A_mark_keeps_its_closing_quote_or_bracket(string input, string expected) => Assert.Equal(expected, PP(input));
+
         [Theory]
         [InlineData("Version 2.5 released", "Version 2.5 released")]
         [InlineData("visit https://example.com now", "Visit https://example.com now")]

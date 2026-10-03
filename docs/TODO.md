@@ -39,6 +39,20 @@ project: spintax-dotnet
       ignore list so data is not flagged as writing; a spliced list no longer appears verbatim in
       the render, so brand names from data may now be reported as findings. Raised by review here,
       never verified there — it is a sibling repo consuming this engine from a checkout.
+- [x] **Mirror `@spintax/core` 0.10.0 + 0.11.0** ([#3](https://github.com/investblog/spintax-dotnet/issues/3),
+      2026-10-03). Corpus 386 at spintax-js@c96b21a, from PASS=349 FAIL=37 to 386/0 on both
+      targets: no space before a closing quote or bracket (#85, `Closer` in both spacing
+      lookaheads), a CJK separator joins bare (#87, `CharClass.IsUnspacedScript` — a comparison
+      chain generated from Node 24's `\p{Script=…}`, shared by `Render` and `Census` through
+      `Renderer.IsPaddedSeparator`, read by code point), Arabic takes six forms strictly (#88).
+- [ ] **The separator's letter test still reads the HOST's Unicode tables.** Raised by the
+      Codex review of #3: `IsPaddedSeparator` asks `CharUnicodeInfo`, so a letter newer than
+      the runtime's tables (U+31350, Unicode 15+, on net472) is not a letter here and a mixed
+      `and` + that letter goes unpadded, where the reference pads it. Same family as the
+      `Spintax.Corpus.csproj` note on BCL tables, and older than #87 — the regex it replaced
+      had it too. Closing it means a Node-generated `\p{L}` table, as spintax-win bakes (spintax-py
+      has the same host dependency through `str.isalpha()`); nobody is hurt by it today, so it
+      waits for a reason.
 - [x] **Mirror `@spintax/core` 0.9.0** ([#2](https://github.com/investblog/spintax-dotnet/issues/2),
       2026-09-17). The corpus on `spintax-js@main` (987b080) is 333 cases and **all 333 pass, on
       net8.0 and net472**, from PASS=297 FAIL=36. Five steps, each measured before the next:

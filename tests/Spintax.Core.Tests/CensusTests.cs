@@ -23,6 +23,8 @@ namespace Spintax.Core.Tests
         [InlineData("[a|b|c]", 6, 5)]                                     // 3! orderings, "a b c"
         [InlineData("[<minsize=1;maxsize=2>a|b|c]", 9, 3)]               // 3 singles + 6 ordered pairs
         [InlineData("[<minsize=2;maxsize=3;sep=\", \";lastsep=\" и \">aa|b|c]", 12, 9)] // 6 pairs + 6 triples; "aa, b и c"
+        [InlineData("[<sep=\"and\">a|b]", 2, 7)]                          // "a and b": padded
+        [InlineData("[<sep=\"和\">a|b]", 2, 3)]                            // "a和b": a CJK separator joins bare (#87)
         [InlineData("[{a|b}|c]", 4, 3)]                                   // k=2: 2!·(2·1)=4
         [InlineData("{?x?yes|no}", 2, 3)]
         [InlineData("{plural 2: one|many}", 2, 4)]                           // no locale = two forms; a third would be plural.arity, verbatim

@@ -125,12 +125,26 @@ namespace Spintax.Core
         // scanned once instead of once per character, and the UCP class above gave NBSP and U+3000
         // runs the same shape (spintax-js#80).
         private static readonly Regex SpaceBeforePunctRe = new Regex("(?<!" + S + ")" + S + "+([,;:!?.])");
+        // What closes the quotation or aside a punctuation mark ends inside: `"Is it audited?", the
+        // figure`, `(see above.)`, `«Как дела?», и ушёл`. The two spacing passes below insert no
+        // space between a mark and a closer (spintax-js#85); what follows the closer is left as written.
+        //
+        // `)` and `]` never open, so they always close. A quote is not read by its shape — `“` opens
+        // English and closes German, `"` does both — but by what follows the whole run: whitespace,
+        // the end, a tag, the end of a tag (`title="Really?">`), `.,;:!?…`, `)`, `]` or a dash. The
+        // followers are a LIST, not "anything but a word": a shape it does not name (`(`, `$`, a
+        // shielded value) keeps the space it always got. Every shorter run ends at another quote,
+        // which is not on the list, so a run is only ever read whole. Escaped, because half of
+        // these quotes are indistinguishable in a diff: " ' « » ‹ › “ ” ‘ ’, then … — –.
+        private const string Quotes = "\"'\u00AB\u00BB\u2039\u203A\u201C\u201D\u2018\u2019";
+        private const string Closer =
+            @"[)\]]|[" + Quotes + "]+(?=" + S + @"|\z|<|/?>|[.,;:!?" + "\u2026" + @")\]" + "\u2014\u2013" + "])";
         // The digit is PHP's UCP `\d` — any decimal digit, not just ASCII.
-        private static readonly Regex SpaceAfterCommaRe = new Regex(@"([,;:])(?!\p{Nd})(?!" + S + @"|\z|<)");
+        private static readonly Regex SpaceAfterCommaRe = new Regex(@"([,;:])(?!\p{Nd})(?!" + S + @"|\z|<|" + Closer + ")");
         // A run of sentence punctuation is ONE sentence end; `(?![.!?])` completes the run, and
         // `(?<![.!?])` starts the match only where the run starts, for the same reason as above.
         private static readonly Regex SpaceAfterSentenceRe =
-            new Regex(@"(?<![.!?])([.!?]+)(?![.!?])(?!\p{Nd})(?!" + S + @"|\z|<)");
+            new Regex(@"(?<![.!?])([.!?]+)(?![.!?])(?!\p{Nd})(?!" + S + @"|\z|<|" + Closer + ")");
         // An opener binds to the word it opens. MUST run before capitalisation.
         private static readonly Regex SpaceAfterOpenerRe = new Regex("([" + SentenceOpeners + "])" + S + "+");
         private static readonly Regex CapFirstRe = new Regex("^(" + Lead + @")(\p{Ll})");

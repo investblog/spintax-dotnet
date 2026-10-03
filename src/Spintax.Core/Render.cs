@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -169,7 +170,6 @@ namespace Spintax.Core
         private static readonly Regex IncludeLineRe = new Regex(
             JsText.LineStart + @"[ \t]*#include[ \t\n\r\f\x0B]+""([^""]+)""[ \t\n\r\f\x0B]*" + JsText.LineEnd);
         private static readonly Regex IntegerRe = new Regex(@"^-?[0-9]+\z");
-        private static readonly Regex LettersOnlyRe = new Regex(@"^\p{L}+\z");
 
         /// <summary>Build vars → roll <c>#def</c> → walk → resolve includes. Post-process is the pipeline's.</summary>
         public static string RenderAst(ParsedAst ast, RenderCtx ctx)
@@ -910,11 +910,43 @@ namespace Spintax.Core
         }
 
         /// <summary>Purely alphabetic separators get space-padded; others pass through (plugin).</summary>
+        /// <remarks>
+        /// Except when every letter belongs to a script written without spaces between words
+        /// (spintax-js#87): <c>和</c>, <c>および</c>, <c>と</c> join bare. CJK only — Hangul keeps the
+        /// padding, and a mixed separator such as <c>and和</c> is padded. <see cref="Census"/>
+        /// measures a padded separator with this same test.
+        ///
+        /// Read by code point, with surrogate pairs joined: the reference's <c>\p{L}+</c> runs
+        /// under <c>/u</c>, while a .NET regex sees an astral letter as two surrogates, so
+        /// <c>and𠀀</c> was left unpadded here and padded there. A lone surrogate is not a letter.
+        /// </remarks>
+        internal static bool IsPaddedSeparator(string trimmed)
+        {
+            var allUnspaced = true;
+            for (var i = 0; i < trimmed.Length; i++)
+            {
+                if (!IsLetter(CharUnicodeInfo.GetUnicodeCategory(trimmed, i))) return false;
+                int cp = trimmed[i];
+                if (char.IsHighSurrogate(trimmed[i]) && i + 1 < trimmed.Length && char.IsLowSurrogate(trimmed[i + 1]))
+                {
+                    cp = char.ConvertToUtf32(trimmed[i], trimmed[i + 1]);
+                    i++;
+                }
+                if (!CharClass.IsUnspacedScript(cp)) allUnspaced = false;
+            }
+            return trimmed.Length > 0 && !allUnspaced;
+        }
+
+        private static bool IsLetter(UnicodeCategory c) =>
+            c == UnicodeCategory.UppercaseLetter || c == UnicodeCategory.LowercaseLetter
+            || c == UnicodeCategory.TitlecaseLetter || c == UnicodeCategory.ModifierLetter
+            || c == UnicodeCategory.OtherLetter;
+
         private static string PadSeparator(string sep)
         {
             var trimmed = Parser.PhpTrim(sep);
             if (trimmed.Length == 0) return sep;
-            if (LettersOnlyRe.IsMatch(trimmed)) return " " + trimmed + " ";
+            if (IsPaddedSeparator(trimmed)) return " " + trimmed + " ";
             return sep;
         }
     }

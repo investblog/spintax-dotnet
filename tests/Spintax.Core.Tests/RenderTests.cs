@@ -106,6 +106,31 @@ namespace Spintax.Core.Tests
         }
 
         [Theory]
+        [InlineData("[<sep=\"\u548C\">a|b|c]", "b\u548Cc\u548Ca")]
+        [InlineData("[<sep=\"\U00020000\">a|b]", "b\U00020000a")]   // an ideograph outside the BMP: a surrogate pair
+        [InlineData("[<sep=\"\uFF70\">a|b]", "b\uFF70a")]                      // U+FF70 — Script=Common, listed by hand in the reference
+        [InlineData("[<sep=\"\uBC0F\">a|b]", "b \uBC0F a")]                  // Hangul keeps the padding
+        [InlineData("[<sep=\"and\u548C\">a|b]", "b and\u548C a")]            // mixed script is padded
+        [InlineData("[<sep=\"and\U00020000\">a|b]", "b and\U00020000 a")]     // ...also with an astral ideograph
+        public void A_CJK_separator_joins_bare(string template, string expected)
+        {
+            Assert.Equal(expected, Engine.RenderWith(template, First, new RenderOptions { PostProcess = false }));
+        }
+
+        [Fact]
+        public void The_separator_test_reads_code_points_not_code_units()
+        {
+            Assert.False(Renderer.IsPaddedSeparator("\U00020000\u4E00"));  // all Han, one of them astral
+            Assert.True(Renderer.IsPaddedSeparator("and\U00020000"));       // an astral letter is a letter
+            Assert.True(Renderer.IsPaddedSeparator("\U00010400"));          // DESERET CAPITAL LONG I, not CJK
+            Assert.False(Renderer.IsPaddedSeparator("a\uD840"));            // a lone high surrogate is not a letter
+            Assert.False(Renderer.IsPaddedSeparator("\u30FB"));             // KATAKANA MIDDLE DOT: Script=Common, not a letter
+            Assert.False(Renderer.IsPaddedSeparator(""));
+            Assert.True(CharClass.IsUnspacedScript(0x20000));
+            Assert.False(CharClass.IsUnspacedScript(0xAC00));                // Hangul
+        }
+
+        [Theory]
         [InlineData("9223372036854779904", "ru", "{plural %n%: one|few|many}", "few")] // past long.MaxValue, exact as a double, remainder 4
         [InlineData("9007199254740993", "en", "{plural %n%: one|many}", "many")]       // 2^53 + 1 rounds to 2^53: not one
         [InlineData("-21", "ru", "{plural %n%: one|few|many}", "one")]

@@ -93,5 +93,60 @@ namespace Spintax.Core
                 || code == 0x205F
                 || code == 0x3000;
         }
+
+        /// <summary>
+        /// Whether a code point belongs to a script written without spaces between words — the
+        /// reference's <c>UNSPACED_SCRIPT_RE</c>, one code point (spintax-js#87): Script=Han,
+        /// Hiragana, Katakana, plus U+30FC and U+FF70 (both Script=Common).
+        /// </summary>
+        /// <remarks>
+        /// GENERATED, not written: .NET regex has blocks, not scripts, and a block is the wrong
+        /// shape — U+FF70 shares one with fullwidth Latin. Node v24.19.0 (Unicode 17.0) ran every
+        /// code point through the reference's own regex and the hits were collapsed into these
+        /// ranges. A comparison chain rather than a table, because a static array is mutable state
+        /// (<c>AssemblyContractTests</c>); and it answers the same on net472 and net8, which host
+        /// tables do not.
+        /// </remarks>
+        public static bool IsUnspacedScript(int code)
+        {
+            return (code >= 0x2E80 && code <= 0x2E99)
+                || (code >= 0x2E9B && code <= 0x2EF3)
+                || (code >= 0x2F00 && code <= 0x2FD5)
+                || code == 0x3005
+                || code == 0x3007
+                || (code >= 0x3021 && code <= 0x3029)
+                || (code >= 0x3038 && code <= 0x303B)
+                || (code >= 0x3041 && code <= 0x3096)
+                || (code >= 0x309D && code <= 0x309F)
+                || (code >= 0x30A1 && code <= 0x30FA)
+                || (code >= 0x30FC && code <= 0x30FF)
+                || (code >= 0x31F0 && code <= 0x31FF)
+                || (code >= 0x32D0 && code <= 0x32FE)
+                || (code >= 0x3300 && code <= 0x3357)
+                || (code >= 0x3400 && code <= 0x4DBF)
+                || (code >= 0x4E00 && code <= 0x9FFF)
+                || (code >= 0xF900 && code <= 0xFA6D)
+                || (code >= 0xFA70 && code <= 0xFAD9)
+                || (code >= 0xFF66 && code <= 0xFF9D)
+                || (code >= 0x16FE2 && code <= 0x16FE3)
+                || (code >= 0x16FF0 && code <= 0x16FF6)
+                || (code >= 0x1AFF0 && code <= 0x1AFF3)
+                || (code >= 0x1AFF5 && code <= 0x1AFFB)
+                || (code >= 0x1AFFD && code <= 0x1AFFE)
+                || (code >= 0x1B000 && code <= 0x1B122)
+                || code == 0x1B132
+                || (code >= 0x1B150 && code <= 0x1B152)
+                || code == 0x1B155
+                || (code >= 0x1B164 && code <= 0x1B167)
+                || code == 0x1F200
+                || (code >= 0x20000 && code <= 0x2A6DF)
+                || (code >= 0x2A700 && code <= 0x2B81D)
+                || (code >= 0x2B820 && code <= 0x2CEAD)
+                || (code >= 0x2CEB0 && code <= 0x2EBE0)
+                || (code >= 0x2EBF0 && code <= 0x2EE5D)
+                || (code >= 0x2F800 && code <= 0x2FA1D)
+                || (code >= 0x30000 && code <= 0x3134A)
+                || (code >= 0x31350 && code <= 0x33479);
+        }
     }
 }

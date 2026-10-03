@@ -923,9 +923,8 @@ namespace Spintax.Core
             {
                 var trimmed = Parser.PhpTrim(sep);
                 if (trimmed.Length == 0) return sep.Length;
-                foreach (var ch in trimmed)
-                    if (!char.IsLetter(ch)) return sep.Length;
-                return trimmed.Length + 2; // the renderer pads a purely alphabetic separator
+                // The renderer's own test, so the two cannot drift (a CJK separator joins bare, #87).
+                return Renderer.IsPaddedSeparator(trimmed) ? trimmed.Length + 2 : sep.Length;
             }
 
             /// <summary>The renderer's truthiness test, character for character (<see cref="CharClass.IsUcpSpace"/>).</summary>
