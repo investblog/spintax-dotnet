@@ -154,6 +154,20 @@ namespace Spintax.Core.Tests
         }
 
         [Fact]
+        public void A_proclitic_separator_is_measured_padded_an_upper_bound()
+        {
+            // U+0628 joined by U+0648 under ar: the render attaches it ("b wb", 4 units); the walk
+            // measures the padded form ("b w b", 5) — an upper bound, docs/TODO.md. Without the
+            // locale the render pads too, and the length is exact.
+            const string t = "[<sep=\"\x0648\">\x0628|\x0628]";
+            var rendered = Engine.Render(t, new RenderOptions { PostProcess = false, Locale = "ar", Seed = "1" });
+            Assert.Equal("\x0628 \x0648\x0628", rendered);
+            Assert.Equal(5, Engine.MaxLength(t, null, "ar"));
+            Assert.Equal(5, Engine.MaxLength(t));
+            Assert.Equal("\x0628 \x0648 \x0628", Engine.Render(t, new RenderOptions { PostProcess = false, Seed = "1" }));
+        }
+
+        [Fact]
         public void An_optional_item_whose_text_comes_from_the_row_is_counted_from_the_re_read()
         {
             // `{%v%|}` is marked for the re-read, so the count of the element comes from the body

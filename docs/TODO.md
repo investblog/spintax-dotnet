@@ -45,6 +45,12 @@ project: spintax-dotnet
       lookaheads), a CJK separator joins bare (#87, `CharClass.IsUnspacedScript` — a comparison
       chain generated from Node 24's `\p{Script=…}`, shared by `Render` and `Census` through
       `Renderer.IsPaddedSeparator`, read by code point), Arabic takes six forms strictly (#88).
+- [x] **Mirror `@spintax/core` 0.12.0** ([#4](https://github.com/investblog/spintax-dotnet/issues/4),
+      2026-10-06). Corpus 408 at spintax-js@65440d5, from PASS=397 FAIL=11 to 408/0 on both
+      targets: Arabic U+0648 / U+0641 (`ar`) and Hebrew U+05D5 (`he`) attach to a next element
+      starting with a letter of their script (#90, `CharClass.IsArabicLetter` / `IsHebrewLetter`,
+      generated like the unspaced set, first code point read with surrogates); Thai, Lao, Khmer,
+      Myanmar join the unspaced set. `MaxLength` keeps the padded form — an upper bound (Debts).
 - [ ] **The separator's letter test still reads the HOST's Unicode tables.** Raised by the
       Codex review of #3: `IsPaddedSeparator` asks `CharUnicodeInfo`, so a letter newer than
       the runtime's tables (U+31350, Unicode 15+, on net472) is not a letter here and a mixed
@@ -82,6 +88,10 @@ project: spintax-dotnet
 - Per-element permutation separators make `MaxLength` an upper bound (documented in `Census`), and
   so does an element that can render blank: the longest render drops nothing, so the full element
   list is measured. `[a|{b|}|c]` is 5 (`a b c`), which no render exceeds.
+- A proclitic separator (Arabic U+0648 / U+0641 under `ar`, Hebrew U+05D5 under `he`, spintax-js#90)
+  is measured padded, so `MaxLength` overstates by one per join where the next element starts with
+  a letter of that script. Exact would need the first code point of every element's longest form,
+  and which element lands after which separator; pinned as an upper bound in `CensusTests`.
 - **`RegexOptions.IgnoreCase` is not PCRE2's caseless matching, measured on both hosts 2026-09-17.**
   `\p{Ll}` under it matches `A` (JavaScript's reading, not PCRE2's); a caseless `[a-z]` takes
   U+212A on net8 and not on net472, and U+017F on neither, where PCRE2's takes both. The

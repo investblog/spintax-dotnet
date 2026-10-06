@@ -924,6 +924,9 @@ namespace Spintax.Core
                 var trimmed = Parser.PhpTrim(sep);
                 if (trimmed.Length == 0) return sep.Length;
                 // The renderer's own test, so the two cannot drift (a CJK separator joins bare, #87).
+                // A proclitic (Arabic و, Hebrew ו — spintax-js#90) is measured padded: the render
+                // drops the space after it when the next element starts with a letter of its script,
+                // so the length is an upper bound there (docs/TODO.md).
                 return Renderer.IsPaddedSeparator(trimmed) ? trimmed.Length + 2 : sep.Length;
             }
 

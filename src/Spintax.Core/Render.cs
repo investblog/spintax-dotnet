@@ -879,7 +879,8 @@ namespace Spintax.Core
 
             var pick = RandomInt(opts.Rng, min, max);
             Shuffle(elements, opts.Rng);
-            return JoinWithSeparators(elements, pick, config.Sep, config.LastSep ?? config.Sep);
+            return JoinWithSeparators(
+                elements, pick, config.Sep, config.LastSep ?? config.Sep, Plurals.NormalizeBaseLang(opts.Locale));
         }
 
         /// <summary>Fisher-Yates, matching the plugin: i = n-1 … 1, j = randomInt(0, i), swap.</summary>
@@ -894,7 +895,7 @@ namespace Spintax.Core
             }
         }
 
-        private static string JoinWithSeparators(List<Element> elements, int count, string globalSep, string globalLastSep)
+        private static string JoinWithSeparators(List<Element> elements, int count, string globalSep, string globalLastSep, string lang)
         {
             if (count == 0) return "";
             if (count == 1) return elements[0].Text;
@@ -904,7 +905,7 @@ namespace Spintax.Core
             {
                 var el = elements[i];
                 var sep = el.Sep ?? (i == count - 1 ? globalLastSep : globalSep);
-                sb.Append(PadSeparator(sep)).Append(el.Text);
+                sb.Append(PadSeparator(sep, lang, el.Text)).Append(el.Text);
             }
             return sb.ToString();
         }
@@ -942,12 +943,41 @@ namespace Spintax.Core
             || c == UnicodeCategory.TitlecaseLetter || c == UnicodeCategory.ModifierLetter
             || c == UnicodeCategory.OtherLetter;
 
-        private static string PadSeparator(string sep)
+        /// <remarks>
+        /// And except a proclitic conjunction in its language (spintax-js#90): Arabic U+0648 and
+        /// U+0641 under <c>ar</c>, Hebrew U+05D5 under <c>he</c>, keep the space before them and none
+        /// after when <paramref name="next"/> starts with a letter of that script — by Script, not
+        /// Script_Extensions, and by code point, so an astral Arabic letter counts. Before anything
+        /// else (a Latin brand, a digit, U+0640) both spaces stay. Keyed by language, not script:
+        /// Persian and Urdu write the same letter as a word. <see cref="Census"/> keeps measuring the
+        /// padded form, one character longer, so its length stays an upper bound.
+        /// </remarks>
+        private static string PadSeparator(string sep, string lang, string next)
         {
             var trimmed = Parser.PhpTrim(sep);
             if (trimmed.Length == 0) return sep;
+            if (IsProclitic(lang, trimmed))
+            {
+                if (next.Length > 0)
+                {
+                    var first = char.IsHighSurrogate(next[0]) && next.Length > 1 && char.IsLowSurrogate(next[1])
+                        ? char.ConvertToUtf32(next[0], next[1])
+                        : next[0];
+                    var attaches = lang == "ar" ? CharClass.IsArabicLetter(first) : CharClass.IsHebrewLetter(first);
+                    if (attaches) return " " + trimmed;
+                }
+                return " " + trimmed + " ";
+            }
             if (IsPaddedSeparator(trimmed)) return " " + trimmed + " ";
             return sep;
+        }
+
+        private static bool IsProclitic(string lang, string trimmed)
+        {
+            if (trimmed.Length != 1) return false;
+            if (lang == "ar") return trimmed[0] == '\x0648' || trimmed[0] == '\x0641';
+            if (lang == "he") return trimmed[0] == '\x05D5';
+            return false;
         }
     }
 }

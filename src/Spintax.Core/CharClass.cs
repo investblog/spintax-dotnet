@@ -97,7 +97,9 @@ namespace Spintax.Core
         /// <summary>
         /// Whether a code point belongs to a script written without spaces between words — the
         /// reference's <c>UNSPACED_SCRIPT_RE</c>, one code point (spintax-js#87): Script=Han,
-        /// Hiragana, Katakana, plus U+30FC and U+FF70 (both Script=Common).
+        /// Hiragana, Katakana, plus U+30FC and U+FF70 (both Script=Common); Thai, Lao, Khmer and
+        /// Myanmar since spintax-js#90. By Script, not Script_Extensions: U+3006, U+303C and
+        /// U+FF9E/FF9F are Common and stay out.
         /// </summary>
         /// <remarks>
         /// GENERATED, not written: .NET regex has blocks, not scripts, and a block is the wrong
@@ -109,7 +111,25 @@ namespace Spintax.Core
         /// </remarks>
         public static bool IsUnspacedScript(int code)
         {
-            return (code >= 0x2E80 && code <= 0x2E99)
+            return (code >= 0x0E01 && code <= 0x0E3A)
+                || (code >= 0x0E40 && code <= 0x0E5B)
+                || (code >= 0x0E81 && code <= 0x0E82)
+                || code == 0x0E84
+                || (code >= 0x0E86 && code <= 0x0E8A)
+                || (code >= 0x0E8C && code <= 0x0EA3)
+                || code == 0x0EA5
+                || (code >= 0x0EA7 && code <= 0x0EBD)
+                || (code >= 0x0EC0 && code <= 0x0EC4)
+                || code == 0x0EC6
+                || (code >= 0x0EC8 && code <= 0x0ECE)
+                || (code >= 0x0ED0 && code <= 0x0ED9)
+                || (code >= 0x0EDC && code <= 0x0EDF)
+                || (code >= 0x1000 && code <= 0x109F)
+                || (code >= 0x1780 && code <= 0x17DD)
+                || (code >= 0x17E0 && code <= 0x17E9)
+                || (code >= 0x17F0 && code <= 0x17F9)
+                || (code >= 0x19E0 && code <= 0x19FF)
+                || (code >= 0x2E80 && code <= 0x2E99)
                 || (code >= 0x2E9B && code <= 0x2EF3)
                 || (code >= 0x2F00 && code <= 0x2FD5)
                 || code == 0x3005
@@ -125,9 +145,12 @@ namespace Spintax.Core
                 || (code >= 0x3300 && code <= 0x3357)
                 || (code >= 0x3400 && code <= 0x4DBF)
                 || (code >= 0x4E00 && code <= 0x9FFF)
+                || (code >= 0xA9E0 && code <= 0xA9FE)
+                || (code >= 0xAA60 && code <= 0xAA7F)
                 || (code >= 0xF900 && code <= 0xFA6D)
                 || (code >= 0xFA70 && code <= 0xFAD9)
                 || (code >= 0xFF66 && code <= 0xFF9D)
+                || (code >= 0x116D0 && code <= 0x116E3)
                 || (code >= 0x16FE2 && code <= 0x16FE3)
                 || (code >= 0x16FF0 && code <= 0x16FF6)
                 || (code >= 0x1AFF0 && code <= 0x1AFF3)
@@ -147,6 +170,89 @@ namespace Spintax.Core
                 || (code >= 0x2F800 && code <= 0x2FA1D)
                 || (code >= 0x30000 && code <= 0x3134A)
                 || (code >= 0x31350 && code <= 0x33479);
+        }
+
+        /// <summary>
+        /// Whether a code point is a letter of Script=Arabic — the reference's
+        /// <c>/^(?=\p{L})\p{Script=Arabic}$/u</c>, which decides whether Arabic و / ف attach to the
+        /// next element (spintax-js#90). Script, not Script_Extensions: U+0640 (tatweel) is Common.
+        /// </summary>
+        /// <remarks>GENERATED the same way as <see cref="IsUnspacedScript"/>, Node v24.19.0 (Unicode 17.0).</remarks>
+        public static bool IsArabicLetter(int code)
+        {
+            return (code >= 0x0620 && code <= 0x063F)
+                || (code >= 0x0641 && code <= 0x064A)
+                || (code >= 0x066E && code <= 0x066F)
+                || (code >= 0x0671 && code <= 0x06D3)
+                || code == 0x06D5
+                || (code >= 0x06E5 && code <= 0x06E6)
+                || (code >= 0x06EE && code <= 0x06EF)
+                || (code >= 0x06FA && code <= 0x06FC)
+                || code == 0x06FF
+                || (code >= 0x0750 && code <= 0x077F)
+                || (code >= 0x0870 && code <= 0x0887)
+                || (code >= 0x0889 && code <= 0x088F)
+                || (code >= 0x08A0 && code <= 0x08C9)
+                || (code >= 0xFB50 && code <= 0xFBB1)
+                || (code >= 0xFBD3 && code <= 0xFD3D)
+                || (code >= 0xFD50 && code <= 0xFD8F)
+                || (code >= 0xFD92 && code <= 0xFDC7)
+                || (code >= 0xFDF0 && code <= 0xFDFB)
+                || (code >= 0xFE70 && code <= 0xFE74)
+                || (code >= 0xFE76 && code <= 0xFEFC)
+                || (code >= 0x10EC2 && code <= 0x10EC7)
+                || (code >= 0x1EE00 && code <= 0x1EE03)
+                || (code >= 0x1EE05 && code <= 0x1EE1F)
+                || (code >= 0x1EE21 && code <= 0x1EE22)
+                || code == 0x1EE24
+                || code == 0x1EE27
+                || (code >= 0x1EE29 && code <= 0x1EE32)
+                || (code >= 0x1EE34 && code <= 0x1EE37)
+                || code == 0x1EE39
+                || code == 0x1EE3B
+                || code == 0x1EE42
+                || code == 0x1EE47
+                || code == 0x1EE49
+                || code == 0x1EE4B
+                || (code >= 0x1EE4D && code <= 0x1EE4F)
+                || (code >= 0x1EE51 && code <= 0x1EE52)
+                || code == 0x1EE54
+                || code == 0x1EE57
+                || code == 0x1EE59
+                || code == 0x1EE5B
+                || code == 0x1EE5D
+                || code == 0x1EE5F
+                || (code >= 0x1EE61 && code <= 0x1EE62)
+                || code == 0x1EE64
+                || (code >= 0x1EE67 && code <= 0x1EE6A)
+                || (code >= 0x1EE6C && code <= 0x1EE72)
+                || (code >= 0x1EE74 && code <= 0x1EE77)
+                || (code >= 0x1EE79 && code <= 0x1EE7C)
+                || code == 0x1EE7E
+                || (code >= 0x1EE80 && code <= 0x1EE89)
+                || (code >= 0x1EE8B && code <= 0x1EE9B)
+                || (code >= 0x1EEA1 && code <= 0x1EEA3)
+                || (code >= 0x1EEA5 && code <= 0x1EEA9)
+                || (code >= 0x1EEAB && code <= 0x1EEBB);
+        }
+
+        /// <summary>
+        /// Whether a code point is a letter of Script=Hebrew — the reference's
+        /// <c>/^(?=\p{L})\p{Script=Hebrew}$/u</c>, for Hebrew ו (spintax-js#90).
+        /// </summary>
+        /// <remarks>GENERATED the same way as <see cref="IsUnspacedScript"/>, Node v24.19.0 (Unicode 17.0).</remarks>
+        public static bool IsHebrewLetter(int code)
+        {
+            return (code >= 0x05D0 && code <= 0x05EA)
+                || (code >= 0x05EF && code <= 0x05F2)
+                || code == 0xFB1D
+                || (code >= 0xFB1F && code <= 0xFB28)
+                || (code >= 0xFB2A && code <= 0xFB36)
+                || (code >= 0xFB38 && code <= 0xFB3C)
+                || code == 0xFB3E
+                || (code >= 0xFB40 && code <= 0xFB41)
+                || (code >= 0xFB43 && code <= 0xFB44)
+                || (code >= 0xFB46 && code <= 0xFB4F);
         }
     }
 }
