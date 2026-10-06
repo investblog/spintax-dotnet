@@ -51,6 +51,14 @@ project: spintax-dotnet
       starting with a letter of their script (#90, `CharClass.IsArabicLetter` / `IsHebrewLetter`,
       generated like the unspaced set, first code point read with surrogates); Thai, Lao, Khmer,
       Myanmar join the unspaced set. `MaxLength` keeps the padded form — an upper bound (Debts).
+      Released as `0.1.5`; the PUBLISHED dlls swapped into the corpus runner give 408/0 on both
+      hosts, the 0.1.4 package 397/11 on net472. The same swap of 0.1.4 on net8.0 gives 0/408 —
+      the runner is bound to assembly version 0.1.5 and net8 refuses an older one; a harness
+      artifact, so the contrast run is net472. `spintax-zenno` on this checkout: 110/110 on both
+      hosts (2026-10-06); its shipped dll is still the 0.1.4 build until it rebuilds.
+      Trap for tests: `a<s>|b` gives `s` to `b`, not `a`; and a `%v%` directly in a permutation
+      element is spliced and re-parsed, so its spaces are trimmed before render — to test the
+      render-time trim, put the variable in a nested construct (`{%sp%|%sp%}`).
 - [ ] **The separator's letter test still reads the HOST's Unicode tables.** Raised by the
       Codex review of #3: `IsPaddedSeparator` asks `CharUnicodeInfo`, so a letter newer than
       the runtime's tables (U+31350, Unicode 15+, on net472) is not a letter here and a mixed
