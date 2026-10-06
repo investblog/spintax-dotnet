@@ -136,13 +136,16 @@ namespace Spintax.Core.Tests
             // U+0628 / U+0627 elements, U+0648 between them under ar. The element after the
             // separator is the TRIMMED text that survived the drop: a leading space from the row
             // does not stop the attach, and a blank element is gone, so its successor is read.
-            var opts = new RenderOptions { PostProcess = false, Locale = "ar", Seed = "1", Context = new Dictionary<string, string> { ["v"] = " \x0627" } };
-            Assert.Equal("\x0628 \x0648\x0627", Engine.Render("[<minsize=2;maxsize=2;sep=\"\x0648\">\x0628|%v%]", opts));
+            // A %sp% directly in the element is spliced and re-parsed, which trims it before render;
+            // inside a nested construct its spaces arrive at render, as in the reference's test.
+            Rng last = (_, max) => max;
+            var opts = new RenderOptions { PostProcess = false, Locale = "ar", Seed = "1", Context = new Dictionary<string, string> { ["sp"] = "  " } };
+            Assert.Equal("\x0628 \x0648\x0627", Engine.RenderWith("[<sep=\"\x0648\">\x0628|{%sp%|%sp%}\x0627]", last, opts));
+            Assert.Equal("\x0628 \x0648 E", Engine.RenderWith("[<sep=\"\x0648\">\x0628|{%sp%|%sp%}E]", last, opts));
             var blank = Engine.Render("[<minsize=3;maxsize=3;sep=\"\x0648\">\x0628|{ }|\x0627]", opts);
             Assert.True(blank == "\x0628 \x0648\x0627" || blank == "\x0627 \x0648\x0628", blank);
             // A per-element separator is read the same way, and he keys on U+05D5 only.
-            // `a<s>` gives s to the element after a; a last-pick Rng keeps the source order.
-            Rng last = (_, max) => max;
+            // `a<s>` gives s to the element after a; the last-pick Rng keeps the source order.
             var he = new RenderOptions { PostProcess = false, Locale = "he" };
             Assert.Equal("a \x05D5\x05D0", Engine.RenderWith("[a<\x05D5>|\x05D0]", last, he));
             Assert.Equal("a \x05D5 b", Engine.RenderWith("[a<\x05D5>|b]", last, he));
