@@ -96,7 +96,7 @@ namespace Spintax.Core
             return Census.Combinations(Parser.ParseTemplate(template), vars, locale);
         }
 
-        /// <summary>The length (UTF-16 units, before post-process) of the longest render the template allows; same two readings as <see cref="Combinations"/>.</summary>
+        /// <summary>The length (UTF-16 units, before post-process) of the longest render the template allows; same two readings as <see cref="Combinations"/>. An upper bound, not exact, for permutations with per-element separators, elements that can render blank, or an Arabic/Hebrew proclitic separator (see <see cref="Census"/>).</summary>
         public static long MaxLength(string template, IReadOnlyDictionary<string, string>? vars = null, string? locale = null)
         {
             return Census.MaxLength(Parser.ParseTemplate(template), vars, locale);

@@ -37,7 +37,9 @@ namespace Spintax.Core
     /// and lengths saturate at <see cref="long.MaxValue"/>. The longest permutation is exact
     /// for global separators; with per-element separators the longest of them stands in for every
     /// slot, and where an element can render blank the full element list is measured — both upper
-    /// bounds, because dropping only shortens.
+    /// bounds, because dropping only shortens. A proclitic separator (Arabic U+0648 / U+0641 under
+    /// <c>ar</c>, Hebrew U+05D5 under <c>he</c>) is measured padded, one unit longer than the join
+    /// the renderer writes before a letter of its script — an upper bound too (spintax-js#90).
     /// <para>
     /// Two of the renderer's caps ARE mirrored: the variable cap applies to variable hops only
     /// (rolling a definition is not one), and a fixpoint that ran out of passes freezes its

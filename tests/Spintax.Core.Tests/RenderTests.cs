@@ -130,6 +130,46 @@ namespace Spintax.Core.Tests
             Assert.False(CharClass.IsUnspacedScript(0xAC00));                // Hangul
         }
 
+        [Fact]
+        public void A_proclitic_reads_the_trimmed_surviving_next_element()
+        {
+            // U+0628 / U+0627 elements, U+0648 between them under ar. The element after the
+            // separator is the TRIMMED text that survived the drop: a leading space from the row
+            // does not stop the attach, and a blank element is gone, so its successor is read.
+            var opts = new RenderOptions { PostProcess = false, Locale = "ar", Seed = "1", Context = new Dictionary<string, string> { ["v"] = " \x0627" } };
+            Assert.Equal("\x0628 \x0648\x0627", Engine.Render("[<minsize=2;maxsize=2;sep=\"\x0648\">\x0628|%v%]", opts));
+            var blank = Engine.Render("[<minsize=3;maxsize=3;sep=\"\x0648\">\x0628|{ }|\x0627]", opts);
+            Assert.True(blank == "\x0628 \x0648\x0627" || blank == "\x0627 \x0648\x0628", blank);
+            // A per-element separator is read the same way, and he keys on U+05D5 only.
+            // `a<s>` gives s to the element after a; a last-pick Rng keeps the source order.
+            Rng last = (_, max) => max;
+            var he = new RenderOptions { PostProcess = false, Locale = "he" };
+            Assert.Equal("a \x05D5\x05D0", Engine.RenderWith("[a<\x05D5>|\x05D0]", last, he));
+            Assert.Equal("a \x05D5 b", Engine.RenderWith("[a<\x05D5>|b]", last, he));
+        }
+
+        [Fact]
+        public void The_generated_script_tables_hold_their_boundaries()
+        {
+            Assert.True(CharClass.IsArabicLetter(0x0620));
+            Assert.False(CharClass.IsArabicLetter(0x0640));   // tatweel: Script=Common
+            Assert.True(CharClass.IsArabicLetter(0x0641));
+            Assert.False(CharClass.IsArabicLetter(0x064B));   // fathatan: a mark, not a letter
+            Assert.True(CharClass.IsArabicLetter(0x1EE00));   // astral
+            Assert.False(CharClass.IsArabicLetter(0x06F0));   // extended Arabic-Indic digit zero
+            Assert.True(CharClass.IsHebrewLetter(0x05D0));
+            Assert.True(CharClass.IsHebrewLetter(0x05EA));
+            Assert.False(CharClass.IsHebrewLetter(0x05BE));   // maqaf: punctuation
+            Assert.False(CharClass.IsHebrewLetter(0x0628));
+            Assert.True(CharClass.IsUnspacedScript(0x0E01));  // Thai
+            Assert.False(CharClass.IsUnspacedScript(0x0E00)); // unassigned
+            Assert.True(CharClass.IsUnspacedScript(0x0E81));  // Lao
+            Assert.True(CharClass.IsUnspacedScript(0x1780));  // Khmer
+            Assert.True(CharClass.IsUnspacedScript(0x1000));  // Myanmar
+            Assert.False(CharClass.IsUnspacedScript(0x3006)); // Script=Common, Han only by extension
+            Assert.False(CharClass.IsUnspacedScript(0xFF9E)); // halfwidth voiced mark: Common
+        }
+
         [Theory]
         [InlineData("9223372036854779904", "ru", "{plural %n%: one|few|many}", "few")] // past long.MaxValue, exact as a double, remainder 4
         [InlineData("9007199254740993", "en", "{plural %n%: one|many}", "many")]       // 2^53 + 1 rounds to 2^53: not one
